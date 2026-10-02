@@ -1,5 +1,5 @@
-# The gate on its own pull requests, run from the checked-out source: the contract test of every change.
-# Same file as templates/merge-gate.yml but for the action, taken from this checkout.
+# The gate on its own pull requests, run from the checked-out source: the contract test of every change,
+# to the action and to the shared job (gate.yml) alike. Same triggers as templates/merge-gate.yml.
 name: merge-gate
 
 on:
@@ -20,34 +20,9 @@ on:
         description: Pull request number — empty for every pull request the gate keeps
         required: false
 
-permissions:
-  contents: read
-
-# One run at a time per pull request. A newer waiting run replaces an older one, which loses nothing: each
-# run reads the state afresh. The sweep, and a dispatch without `pr`, share a group of their own.
-concurrency:
-  group: merge-gate-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || inputs.pr || 'sweep' }}
-  cancel-in-progress: false
-
 jobs:
   gate:
-    # Skipped before a runner starts when there is nothing to decide: a push to a work draft, a CI run
-    # on main or cancelled, the gate's own label removal on opening, a sweep with nothing awaited.
-    if: >-
-      (github.event_name == 'pull_request' && (
-        (github.event.action == 'unlabeled' && github.event.label.name == 'merge-gate' && github.event.pull_request.draft)
-        || (github.event.action != 'unlabeled'
-          && (!github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'merge-gate')))))
-      || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
-        && github.event.workflow_run.conclusion != 'cancelled')
-      || github.event_name == 'workflow_dispatch'
-      || (github.event_name == 'schedule' && contains(toJSON(vars), 'MERGE_GATE_AWAIT_'))
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./
-        with:
-          token: ${{ secrets.GATE_TOKEN }}
-          first-review: gate
-          required-checks: verify
+    uses: ./.github/workflows/gate.yml
+    with:
+      local: true
+    secrets: inherit

@@ -73,7 +73,10 @@ gate the moment the review lands; the sweep is the fallback when nobody watches.
 ## Install
 
 1. Copy [`templates/merge-gate.yml`](templates/merge-gate.yml) to `.github/workflows/merge-gate.yml`.
-   Adapt its two `# ADAPT` lines: the names of the CI workflows, and the CI's aggregate check.
+   Adapt its one `# ADAPT` line, the names of the CI workflows; pass `required-checks` only when the CI's
+   aggregate job is not named `verify`. The caller holds nothing but its triggers, which GitHub requires
+   there: the job itself is [`.github/workflows/gate.yml`](.github/workflows/gate.yml), called at `@v1`,
+   so a change to its conditions, concurrency or defaults reaches every repository without a pull request.
 2. Set the `GATE_TOKEN` repository secret to a token of the repository owner. A classic PAT with
    `repo` and `workflow` scopes is enough. It must be able to read `copilot_internal/user`, so it is
    the token of the account whose Copilot credits pay for the reviews.
@@ -97,8 +100,11 @@ pnpm check        # typecheck, tests, build, and dist/ must be the build of src/
 - `src/snapshot.ts` reads a pull request in one GraphQL query. `test/fixtures/*.json` are real answers
   to that query, recorded with `scripts/record-fixture.ts`.
 - `src/gate.ts` acts, in an order that leaves a recognizable state if a run dies halfway.
-- This repository gates its own pull requests with the checked-out action
-  (`.github/workflows/merge-gate.yml`). A change is proven on a real pull request before it is tagged.
+- This repository gates its own pull requests through the same shared job, with the checked-out action
+  (`.github/workflows/merge-gate.yml` calls `gate.yml` with `local: true`). A change is proven on a real
+  pull request, or a dispatch, before it is tagged.
+- `test/workflows.test.ts` keeps the callers thin: the template and this repository's caller share their
+  triggers, and the shared job forwards every input of the action.
 
 ## Release
 

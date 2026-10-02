@@ -1,0 +1,67 @@
+# The merge gate's job, written once. Every repository keeps a thin caller (templates/merge-gate.yml):
+# its triggers, which GitHub requires in the calling workflow, and a call to this file. Everything else
+# (the skip conditions, the concurrency, the inputs' defaults) lives here, so changing it costs no pull
+# request in the repositories. Inside a called workflow, the `github` context, the event and `vars` are
+# the caller's, and so is the workflow name the gate uses to leave its own check out of the CI verdict.
+name: merge-gate
+
+on:
+  workflow_call:
+    inputs:
+      required-checks:
+        description: Checks that must be present and green on the head, comma-separated — the CI's aggregate job.
+        type: string
+        default: verify
+      ignore-checks:
+        description: Checks the CI verdict leaves out, comma-separated.
+        type: string
+        default: ''
+      first-review:
+        description: "`gate`: the gate asks Copilot for the first review. `ruleset`: a repository ruleset asks for it."
+        type: string
+        default: gate
+      local:
+        description: Run the action from the caller's checkout instead of the release (this repository's own pull requests).
+        type: boolean
+        default: false
+
+jobs:
+  gate:
+    permissions:
+      contents: read
+    # One run at a time per pull request. A newer waiting run replaces an older one, which loses nothing:
+    # each run reads the state afresh. The sweep, and a dispatch without `pr`, share a group of their own.
+    # `github.event.inputs.pr` is the dispatch's input: here `inputs` means this workflow's own inputs.
+    concurrency:
+      group: merge-gate-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || github.event.inputs.pr || 'sweep' }}
+      cancel-in-progress: false
+    # Skipped before a runner starts when there is nothing to decide: a push to a work draft, a CI run
+    # on main or cancelled, the gate's own label removal on opening, a sweep with nothing awaited.
+    if: >-
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'unlabeled' && github.event.label.name == 'merge-gate' && github.event.pull_request.draft)
+        || (github.event.action != 'unlabeled'
+          && (!github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'merge-gate')))))
+      || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+        && github.event.workflow_run.conclusion != 'cancelled')
+      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'schedule' && contains(toJSON(vars), 'MERGE_GATE_AWAIT_'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - if: ${{ !inputs.local }}
+        uses: svassaux/merge-gate@v1
+        with:
+          token: ${{ secrets.GATE_TOKEN }}
+          first-review: ${{ inputs.first-review }}
+          required-checks: ${{ inputs.required-checks }}
+          ignore-checks: ${{ inputs.ignore-checks }}
+      - if: ${{ inputs.local }}
+        uses: actions/checkout@v4
+      - if: ${{ inputs.local }}
+        uses: ./
+        with:
+          token: ${{ secrets.GATE_TOKEN }}
+          first-review: ${{ inputs.first-review }}
+          required-checks: ${{ inputs.required-checks }}
+          ignore-checks: ${{ inputs.ignore-checks }}
