@@ -1,0 +1,105 @@
+# merge-gate
+
+A GitHub Action that keeps a finalized pull request **in draft** until three things hold on its head:
+the CI is green, Copilot has reviewed it, and no review thread is open. Then it marks the pull request
+ready, which unlocks the Merge button. When Copilot is out of credits, or does not answer, the gate
+opens the pull request without the review and says so: it never blocks on Copilot.
+
+The same code serves every repository. The `svassaux` repositories use this copy. The FoodMeUp
+repositories use a private copy, `FoodMeUp/merge-gate`, published at the same tag, so neither owner
+depends on the other.
+
+## The contract
+
+1. **Work draft.** The gate does not touch a draft that was never handed to it.
+2. **Hand-over.** Marking the pull request ready hands it to the gate. The gate then:
+   - puts the `merge-gate` label on, meaning "finalized, kept by the gate";
+   - draws the pull request back to draft until everything is green. On a repository without
+     branch protection, the draft is what keeps the Merge button disabled.
+3. **Copilot is asked only when a review is due:**
+   - the pull request has no Copilot review yet; or
+   - the last review opened threads and the head moved since, i.e. a push that answers them.
+
+   A push after a clean review costs no review. The gate never asks:
+   - while Copilot is already queued (a second request would strand in the queue);
+   - while a thread is open;
+   - while the CI is red;
+   - on a work draft.
+
+   With `first-review: ruleset`, a repository ruleset asks for the first review. The gate gives it
+   5 minutes, then asks itself.
+4. **Opening.** When the CI is green, no thread is open and the due review is in, the gate:
+   - marks the pull request ready;
+   - takes the label off;
+   - publishes `merge-gate` as success.
+5. **Copilot unavailable never blocks.**
+   - The gate reads the quota before asking. With the credits exhausted, it asks nothing.
+   - A request that does not reach Copilot's queue within 20 s was dropped. Copilot without credits
+     drops a request silently.
+   - A review still queued after 20 minutes will not come.
+
+   In all three cases the pull request opens without the review. One comment on the pull request
+   records which head went unreviewed and why. The success status says "NON relue par Copilot".
+6. **One status, `merge-gate`**, on the head:
+   - `success`: the pull request may be merged;
+   - `pending`: the gate waits on the CI or on Copilot;
+   - `failure`: the author must act, because the CI is red or a thread is open.
+7. **Taking the label off** hands the pull request back to its author.
+
+## Wake-ups
+
+A run reads the pull request once, decides, acts, and ends. It never waits, apart from the 20 s
+spent confirming a request. Something must therefore wake the gate each time the state changes:
+
+| Change | Wakes the gate |
+| --- | --- |
+| push, hand-over, reopening | `pull_request` |
+| a CI workflow finished | `workflow_run` of the CI workflows |
+| Copilot submitted its review | `workflow_run` of the dynamic `Copilot` workflow |
+| Copilot never answers | the `*/5` sweep, which runs only while a `MERGE_GATE_AWAIT_<n>` repository variable exists |
+| a thread resolved without a push | **nothing**: GitHub has no workflow event for it. Run `gh workflow run merge-gate.yml -f pr=<n>`, or click *Ready for review* |
+
+Copilot's own `pull_request_review` events are not used. A workflow they start waits for approval and
+never runs.
+
+## Install
+
+1. Copy [`templates/merge-gate.yml`](templates/merge-gate.yml) to `.github/workflows/merge-gate.yml`.
+   Adapt its two `# ADAPT` lines: the names of the CI workflows, and the CI's aggregate check.
+2. Set the `GATE_TOKEN` repository secret to a token of the repository owner. A classic PAT with
+   `repo` and `workflow` scopes is enough. It must be able to read `copilot_internal/user`, so it is
+   the token of the account whose Copilot credits pay for the reviews.
+3. The `merge-gate` label is created the first time the gate uses it.
+
+The gate's own minutes (each run is billed one minute on a private repository) stay at a handful per
+pull request. The gate skips these runs before a runner starts:
+- pushes to a work draft;
+- CI runs on `main`;
+- cancelled CI runs;
+- the sweep, when nothing waits.
+
+## Development
+
+```sh
+pnpm install
+pnpm check        # typecheck, tests, build, and dist/ must be the build of src/
+```
+
+- `src/verdict.ts` is the whole decision. It is pure, and `test/verdict.test.ts` covers it as a table.
+- `src/snapshot.ts` reads a pull request in one GraphQL query. `test/fixtures/*.json` are real answers
+  to that query, recorded with `scripts/record-fixture.ts`.
+- `src/gate.ts` acts, in an order that leaves a recognizable state if a run dies halfway.
+- This repository gates its own pull requests with the checked-out action
+  (`.github/workflows/merge-gate.yml`). A change is proven on a real pull request before it is tagged.
+
+## Release
+
+`dist/` is committed; CI fails when it is not the build of `src/`.
+
+```sh
+pnpm check
+git tag v1.x.y && git push origin v1.x.y
+gh api -X PATCH repos/svassaux/merge-gate/git/refs/tags/v1 --raw-field sha="$(git rev-parse HEAD)" --field force=true
+```
+
+Then publish the same tag to `FoodMeUp/merge-gate`.
