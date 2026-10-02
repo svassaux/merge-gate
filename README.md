@@ -49,7 +49,7 @@ depends on the other.
 ## Wake-ups
 
 A run reads the pull request once, decides, acts, and ends. It never waits, apart from the 20 s
-spent confirming a request. Something must therefore wake the gate each time the state changes:
+spent confirming that a request reached Copilot's queue. Something must therefore wake the gate each time the state changes:
 
 | Change | Wakes the gate |
 | --- | --- |
