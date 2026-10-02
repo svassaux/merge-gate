@@ -1,0 +1,530 @@
+{
+ "id": "PR_kwDOTnUDTs8AAAABGDU5OA",
+ "number": 76,
+ "state": "MERGED",
+ "isDraft": false,
+ "headRefOid": "2eee565b755a1b7896111a7033caa09dda384204",
+ "labels": {
+  "nodes": []
+ },
+ "reviewRequests": {
+  "nodes": []
+ },
+ "reviews": {
+  "nodes": [
+   {
+    "submittedAt": "2026-10-01T08:22:41Z",
+    "commit": {
+     "oid": "7a697cece2d84b5fa6163d3128105f40928c4e13"
+    },
+    "comments": {
+     "totalCount": 4
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T08:37:17Z",
+    "commit": {
+     "oid": "e51276973951edf1e0ab7736ad94847992b665b4"
+    },
+    "comments": {
+     "totalCount": 1
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T09:18:57Z",
+    "commit": {
+     "oid": "df2adc4fb430b2fa3c46ea22574ff30c8c3b4e98"
+    },
+    "comments": {
+     "totalCount": 2
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T11:34:54Z",
+    "commit": {
+     "oid": "4588492898767137510037f46e37b6e1f201fb0f"
+    },
+    "comments": {
+     "totalCount": 1
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T12:17:00Z",
+    "commit": {
+     "oid": "b180f4af98fa9a382f58042ab37901de234477f7"
+    },
+    "comments": {
+     "totalCount": 1
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T14:06:58Z",
+    "commit": {
+     "oid": "3d19c7f6e93137c830778ba60ad74568527843ae"
+    },
+    "comments": {
+     "totalCount": 3
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T14:29:53Z",
+    "commit": {
+     "oid": "b7f11282dc0d9763cb26d26d11d392d1909c9111"
+    },
+    "comments": {
+     "totalCount": 2
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T15:23:09Z",
+    "commit": {
+     "oid": "dead71e8fb8731b5c119ca831df654699e5317d3"
+    },
+    "comments": {
+     "totalCount": 2
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T17:03:08Z",
+    "commit": {
+     "oid": "878e5ca9e17b3425f0933d18c8b009553030b796"
+    },
+    "comments": {
+     "totalCount": 2
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T17:12:02Z",
+    "commit": {
+     "oid": "1aec8c033ff9fd281cb8b6d94d7204dc4d6b3511"
+    },
+    "comments": {
+     "totalCount": 1
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T18:31:05Z",
+    "commit": {
+     "oid": "90473c650bc5b9e281a3f00743a9b11205d0db31"
+    },
+    "comments": {
+     "totalCount": 0
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T20:44:38Z",
+    "commit": {
+     "oid": "bacc89fdfa2b8f192a821cb4fb130f006362a708"
+    },
+    "comments": {
+     "totalCount": 1
+    }
+   },
+   {
+    "submittedAt": "2026-10-01T20:57:40Z",
+    "commit": {
+     "oid": "2eee565b755a1b7896111a7033caa09dda384204"
+    },
+    "comments": {
+     "totalCount": 0
+    }
+   }
+  ]
+ },
+ "reviewThreads": {
+  "pageInfo": {
+   "hasNextPage": false,
+   "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMC0wMVQyMDo0NDozN1rOqCGQkA=="
+  },
+  "nodes": [
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   },
+   {
+    "isResolved": true
+   }
+  ]
+ },
+ "timelineItems": {
+  "nodes": [
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T08:17:59Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T08:33:15Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T09:15:39Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T11:31:50Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T12:14:03Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T14:03:34Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T14:24:28Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T15:17:08Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T16:58:15Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T17:06:14Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T18:27:23Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T20:39:41Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   },
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-01T20:53:39Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   }
+  ]
+ },
+ "comments": {
+  "nodes": [
+   {
+    "id": "IC_kwDOTnUDTs8AAAABYU6dOw",
+    "body": "<!-- railway-bot-comment-version=2 -->\n\n<!-- railway-project-id=\"8087b8f9-3305-498e-a4d9-03fd70fb52da\" railway-project-name=\"garmlink\" -->\n🚅 Deployed to the [garmlink-pr-76](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da?environmentId=e660f096-c850-4ef3-b026-df3ae9213697) environment in **[garmlink](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da)**\n| **Service** | **Status** | **Web** | **Updated** |\n| :--- | :--- | :--- | :--- |\n|  api | ✅ Success ([View Logs](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da/service/e1158bbe-cc45-43fb-afdd-cae070471e0d?id=f7ea9d62-1bed-4073-960a-6728f57d117a&environmentId=e660f096-c850-4ef3-b026-df3ae9213697)) | [Web](https://api-garmlink-pr-76.up.railway.app) | <relative-time datetime=\"2026-10-01T20:52:53.375Z\">Oct 1, 2026 at 8:52 pm UTC</relative-time> |\n|  web | ✅ Success ([View Logs](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da/service/a68693a8-7303-4734-8bd0-a868f743e10f?id=acb27834-cd16-48aa-8e50-898e8b017847&environmentId=e660f096-c850-4ef3-b026-df3ae9213697)) | [Web](https://web-garmlink-pr-76.up.railway.app) | <relative-time datetime=\"2026-10-01T08:17:04.170Z\">Oct 1, 2026 at 8:17 am UTC</relative-time> |\n|  garmin-worker | ✅ Success ([View Logs](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da/service/8d975159-d2da-468b-a5be-061c8ff624d4?id=b435eeb0-8b39-4f07-8bcf-f073144c4981&environmentId=e660f096-c850-4ef3-b026-df3ae9213697)) |  | <relative-time datetime=\"2026-10-01T08:16:29.998Z\">Oct 1, 2026 at 8:16 am UTC</relative-time> |"
+   },
+   {
+    "id": "IC_kwDOTnUDTs8AAAABYhJh8w",
+    "body": "Merge gate: back to **draft** — merging is blocked until:\n- waiting for Copilot to review this commit\n\nThis PR flips to *ready for review* automatically once everything is green — except while a Copilot review is due on it and none is queued (after a push that answers Copilot threads, or when no request went through): the gate asks only about a commit the PR was ready on, and not while its author has it in draft, so mark it ready yourself once every thread is answered, in ONE call with the request: `gh pr ready 76 --repo svassaux/garmlink && ~/.claude/skills/github/request-copilot-review.py svassaux/garmlink 76` (run apart, the helper finds the PR a draft again: the gate's run puts it back within seconds while it waits)."
+   }
+  ]
+ },
+ "commits": {
+  "nodes": [
+   {
+    "commit": {
+     "oid": "2eee565b755a1b7896111a7033caa09dda384204",
+     "statusCheckRollup": {
+      "contexts": {
+       "nodes": [
+        {
+         "__typename": "CheckRun",
+         "name": "gate",
+         "status": "COMPLETED",
+         "conclusion": "CANCELLED",
+         "startedAt": "2026-10-01T20:53:56Z",
+         "completedAt": "2026-10-01T20:58:18Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "merge-gate"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "changes",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:49:42Z",
+         "completedAt": "2026-10-01T20:49:49Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "gate",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:58:21Z",
+         "completedAt": "2026-10-01T20:58:33Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "merge-gate"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "gate",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:49:43Z",
+         "completedAt": "2026-10-01T20:53:37Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "merge-gate"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "test-guard",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:49:40Z",
+         "completedAt": "2026-10-01T20:49:46Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "api",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:49:52Z",
+         "completedAt": "2026-10-01T20:51:52Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "web",
+         "status": "COMPLETED",
+         "conclusion": "SKIPPED",
+         "startedAt": "2026-10-01T20:49:50Z",
+         "completedAt": "2026-10-01T20:49:49Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "worker",
+         "status": "COMPLETED",
+         "conclusion": "SKIPPED",
+         "startedAt": "2026-10-01T20:49:49Z",
+         "completedAt": "2026-10-01T20:49:49Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "integration",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:49:52Z",
+         "completedAt": "2026-10-01T20:51:31Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "e2e-preview",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:50:27Z",
+         "completedAt": "2026-10-01T20:53:19Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "verify",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-01T20:53:21Z",
+         "completedAt": "2026-10-01T20:53:25Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "garmlink - api",
+         "state": "SUCCESS",
+         "description": "Success - api-garmlink-pr-76.up.railway.app",
+         "createdAt": "2026-10-01T20:52:53Z"
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "garmlink - garmin-worker",
+         "state": "SUCCESS",
+         "description": "No deployment needed - watched paths not modified",
+         "createdAt": "2026-10-01T20:49:32Z"
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "garmlink - web",
+         "state": "SUCCESS",
+         "description": "No deployment needed - watched paths not modified",
+         "createdAt": "2026-10-01T20:49:32Z"
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "merge-gate-pr-76",
+         "state": "SUCCESS",
+         "description": "ready for review — CI green, reviewed, no open thread",
+         "createdAt": "2026-10-02T07:32:31Z"
+        }
+       ]
+      }
+     }
+    }
+   }
+  ]
+ }
+}

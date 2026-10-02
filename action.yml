@@ -1,0 +1,18 @@
+name: merge-gate
+description: Keeps a finalized pull request in draft until its CI is green, Copilot has reviewed it and no review thread is open.
+inputs:
+  token:
+    description: A token of the repository owner (the GATE_TOKEN secret). GITHUB_TOKEN cannot draw a pull request back to draft.
+    required: true
+  first-review:
+    description: "`gate`: the gate asks Copilot for the first review. `ruleset`: a repository ruleset asks for it, the gate only for the re-reviews."
+    default: gate
+  required-checks:
+    description: Checks that must be present and green on the head, comma-separated — the CI's aggregate job.
+    default: ''
+  ignore-checks:
+    description: Checks the CI verdict leaves out, comma-separated.
+    default: ''
+runs:
+  using: node24
+  main: dist/index.js

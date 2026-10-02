@@ -1,0 +1,288 @@
+{
+ "id": "PR_kwDOTnUDTs8AAAABGQYsmg",
+ "number": 77,
+ "state": "OPEN",
+ "isDraft": false,
+ "headRefOid": "e672bad9c33558c5c8c611a6bc71c89ec54aa1a4",
+ "labels": {
+  "nodes": []
+ },
+ "reviewRequests": {
+  "nodes": []
+ },
+ "reviews": {
+  "nodes": [
+   {
+    "submittedAt": "2026-10-02T09:39:13Z",
+    "commit": {
+     "oid": "e672bad9c33558c5c8c611a6bc71c89ec54aa1a4"
+    },
+    "comments": {
+     "totalCount": 1
+    }
+   }
+  ]
+ },
+ "reviewThreads": {
+  "pageInfo": {
+   "hasNextPage": false,
+   "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMC0wMlQwOTozOToxM1rOqEqhBg=="
+  },
+  "nodes": [
+   {
+    "isResolved": true
+   }
+  ]
+ },
+ "timelineItems": {
+  "nodes": [
+   {
+    "__typename": "ReviewRequestedEvent",
+    "createdAt": "2026-10-02T09:37:02Z",
+    "requestedReviewer": {
+     "__typename": "Bot",
+     "login": "copilot-pull-request-reviewer"
+    }
+   }
+  ]
+ },
+ "comments": {
+  "nodes": [
+   {
+    "id": "IC_kwDOTnUDTs8AAAABYpfX3Q",
+    "body": "<!-- railway-bot-comment-version=2 -->\n\n<!-- railway-project-id=\"8087b8f9-3305-498e-a4d9-03fd70fb52da\" railway-project-name=\"garmlink\" -->\n🚅 Deployed to the [garmlink-pr-77](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da?environmentId=1c497533-5f3e-4aad-9ac1-8ce07c891801) environment in **[garmlink](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da)**\n| **Service** | **Status** | **Web** | **Updated** |\n| :--- | :--- | :--- | :--- |\n|  api | ✅ Success ([View Logs](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da/service/e1158bbe-cc45-43fb-afdd-cae070471e0d?id=4d26cb5b-d6ff-4a44-b2ba-94b502ce3ccf&environmentId=1c497533-5f3e-4aad-9ac1-8ce07c891801)) | [Web](https://api-garmlink-pr-77.up.railway.app) | <relative-time datetime=\"2026-10-02T09:29:39.766Z\">Oct 2, 2026 at 9:29 am UTC</relative-time> |\n|  web | ✅ Success ([View Logs](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da/service/a68693a8-7303-4734-8bd0-a868f743e10f?id=3c190df7-acfc-4579-8c8b-483b288a94ac&environmentId=1c497533-5f3e-4aad-9ac1-8ce07c891801)) | [Web](https://web-garmlink-pr-77.up.railway.app) | <relative-time datetime=\"2026-10-02T09:29:06.313Z\">Oct 2, 2026 at 9:29 am UTC</relative-time> |\n|  garmin-worker | ✅ Success ([View Logs](https://railway.com/project/8087b8f9-3305-498e-a4d9-03fd70fb52da/service/8d975159-d2da-468b-a5be-061c8ff624d4?id=fc7279d2-62a9-420d-aa35-cdac42d91183&environmentId=1c497533-5f3e-4aad-9ac1-8ce07c891801)) |  | <relative-time datetime=\"2026-10-02T09:23:27.509Z\">Oct 2, 2026 at 9:23 am UTC</relative-time> |"
+   },
+   {
+    "id": "IC_kwDOTnUDTs8AAAABYpwFbA",
+    "body": "Merge gate: back to **draft** — merging is blocked until:\n- waiting for Copilot to review this commit\n\nThis PR flips to *ready for review* automatically once everything is green — except while a Copilot review is due on it and none is queued (after a push that answers Copilot threads, or when no request went through): the gate asks only about a commit the PR was ready on, and not while its author has it in draft, so mark it ready yourself once every thread is answered, in ONE call with the request: `gh pr ready 77 --repo svassaux/garmlink && ~/.claude/skills/github/request-copilot-review.py svassaux/garmlink 77` (run apart, the helper finds the PR a draft again: the gate's run puts it back within seconds while it waits)."
+   },
+   {
+    "id": "IC_kwDOTnUDTs8AAAABYpzBLQ",
+    "body": "Merge gate: back to **draft** — merging is blocked until:\n- 1 unresolved review thread(s)\n\nThis PR flips to *ready for review* automatically once everything is green — except while a Copilot review is due on it and none is queued (after a push that answers Copilot threads, or when no request went through): the gate asks only about a commit the PR was ready on, and not while its author has it in draft, so mark it ready yourself once every thread is answered, in ONE call with the request: `gh pr ready 77 --repo svassaux/garmlink && ~/.claude/skills/github/request-copilot-review.py svassaux/garmlink 77` (run apart, the helper finds the PR a draft again: the gate's run puts it back within seconds while it waits)."
+   }
+  ]
+ },
+ "commits": {
+  "nodes": [
+   {
+    "commit": {
+     "oid": "e672bad9c33558c5c8c611a6bc71c89ec54aa1a4",
+     "statusCheckRollup": {
+      "contexts": {
+       "nodes": [
+        {
+         "__typename": "CheckRun",
+         "name": "changes",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:27:30Z",
+         "completedAt": "2026-10-02T09:27:37Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "gate",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:27:29Z",
+         "completedAt": "2026-10-02T09:31:23Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "merge-gate"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "gate",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:37:06Z",
+         "completedAt": "2026-10-02T09:39:28Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "merge-gate"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "gate",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:47:53Z",
+         "completedAt": "2026-10-02T09:48:04Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "merge-gate"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "gate",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T10:31:09Z",
+         "completedAt": "2026-10-02T10:31:23Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "merge-gate"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "test-guard",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:27:29Z",
+         "completedAt": "2026-10-02T09:27:34Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "api",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:27:41Z",
+         "completedAt": "2026-10-02T09:29:40Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "web",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:27:39Z",
+         "completedAt": "2026-10-02T09:30:44Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "worker",
+         "status": "COMPLETED",
+         "conclusion": "SKIPPED",
+         "startedAt": "2026-10-02T09:27:38Z",
+         "completedAt": "2026-10-02T09:27:37Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "integration",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:27:39Z",
+         "completedAt": "2026-10-02T09:29:15Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "e2e-preview",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:27:39Z",
+         "completedAt": "2026-10-02T09:30:01Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "CheckRun",
+         "name": "verify",
+         "status": "COMPLETED",
+         "conclusion": "SUCCESS",
+         "startedAt": "2026-10-02T09:30:47Z",
+         "completedAt": "2026-10-02T09:30:51Z",
+         "checkSuite": {
+          "workflowRun": {
+           "workflow": {
+            "name": "CI"
+           }
+          }
+         }
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "garmlink - api",
+         "state": "SUCCESS",
+         "description": "Success - api-garmlink-pr-77.up.railway.app",
+         "createdAt": "2026-10-02T09:29:39Z"
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "garmlink - garmin-worker",
+         "state": "SUCCESS",
+         "description": "No deployment needed - watched paths not modified",
+         "createdAt": "2026-10-02T09:27:22Z"
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "garmlink - web",
+         "state": "SUCCESS",
+         "description": "Success - web-garmlink-pr-77.up.railway.app",
+         "createdAt": "2026-10-02T09:29:06Z"
+        },
+        {
+         "__typename": "StatusContext",
+         "context": "merge-gate-pr-77",
+         "state": "SUCCESS",
+         "description": "ready for review — CI green, reviewed, no open thread",
+         "createdAt": "2026-10-02T10:55:19Z"
+        }
+       ]
+      }
+     }
+    }
+   }
+  ]
+ }
+}

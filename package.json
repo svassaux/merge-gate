@@ -1,0 +1,22 @@
+{
+  "name": "merge-gate",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Keeps a pull request in draft until its CI is green, Copilot has reviewed it and no review thread is open.",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --platform=node --target=node24 --format=esm --outfile=dist/index.js --legal-comments=none",
+    "typecheck": "tsc",
+    "test": "node --test test/*.test.ts",
+    "check": "pnpm typecheck && pnpm test && pnpm build && git diff --exit-code -- dist"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

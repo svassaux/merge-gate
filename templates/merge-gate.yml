@@ -1,0 +1,53 @@
+# The merge gate: a finalized pull request stays in draft until its CI is green, Copilot has reviewed
+# it and no review thread is open — and Copilot out of credits never blocks it. Contract, inputs and
+# costs: https://github.com/svassaux/merge-gate
+# Copy this file as .github/workflows/merge-gate.yml and adapt the two marked lines (# ADAPT) only.
+name: merge-gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, unlabeled]
+  workflow_run:
+    # The repository's CI workflows. Not Copilot's: a run it triggers waits for an approval that never
+    # comes (action_required), so the sweep below is what sees a review land.
+    workflows: [CI] # ADAPT: the CI workflows' names
+    types: [completed]
+  schedule:
+    # Wakes the gate while a pull request waits on Copilot: nothing Copilot does starts a run that
+    # executes. The rest of the time the job is skipped, which costs nothing.
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Pull request number — empty for every pull request the gate keeps
+        required: false
+
+permissions:
+  contents: read
+
+# One run at a time per pull request, none cancelled: a run never waits, and each one acts on what it read.
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number || github.event.workflow_run.pull_requests[0].number || inputs.pr || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    # Skipped before a runner starts when there is nothing to decide: a push to a work draft, a CI run
+    # on main or cancelled, the gate's own label removal on opening, a sweep with nothing awaited.
+    if: >-
+      (github.event_name == 'pull_request' && (
+        (github.event.action == 'unlabeled' && github.event.label.name == 'merge-gate' && github.event.pull_request.draft)
+        || (github.event.action != 'unlabeled'
+          && (!github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'merge-gate')))))
+      || (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request'
+        && github.event.workflow_run.conclusion != 'cancelled')
+      || github.event_name == 'workflow_dispatch'
+      || (github.event_name == 'schedule' && contains(toJSON(vars), 'MERGE_GATE_AWAIT_'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: svassaux/merge-gate@v1
+        with:
+          token: ${{ secrets.GATE_TOKEN }}
+          first-review: gate
+          required-checks: verify # ADAPT: the CI's aggregate job
