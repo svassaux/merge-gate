@@ -38,7 +38,7 @@ jobs:
     # Skipped before a runner starts when there is nothing to decide: a push to a work draft, a CI run
     # on main or cancelled, the gate's own label removal on opening, a sweep with nothing awaited.
     if: >-
-      (github.event_name == 'pull_request' && (
+      ((github.event_name == 'pull_request_target' || github.event_name == 'pull_request') && (
         (github.event.action == 'unlabeled' && github.event.label.name == 'merge-gate' && github.event.pull_request.draft)
         || (github.event.action != 'unlabeled'
           && (!github.event.pull_request.draft || contains(github.event.pull_request.labels.*.name, 'merge-gate')))))

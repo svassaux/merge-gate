@@ -1,5 +1,6 @@
 # The gate on its own pull requests, run from the checked-out source: the contract test of every change,
-# to the action and to the shared job (gate.yml) alike. Same triggers as templates/merge-gate.yml.
+# to the action and to the shared job (gate.yml) alike. Same triggers as templates/merge-gate.yml, save
+# `pull_request` for `pull_request_target`: a pull request here must run its own version of the gate.
 name: merge-gate
 
 on:

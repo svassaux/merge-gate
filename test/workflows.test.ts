@@ -28,12 +28,14 @@ describe('the callers', () => {
   it('the template and this repository gate pull requests on the same triggers', () => {
     const t = triggers(template);
     assert.ok(t.length > 10, 'the trigger block was found');
-    assert.deepEqual(triggers(selfCaller), t);
+    // The one difference: here a pull request runs its own version of the gate.
+    assert.deepEqual(triggers(selfCaller), t.map((line) => line.replace(/^  pull_request_target:$/, '  pull_request:')));
   });
 
   it('the template calls the released shared job and hands it the secret', () => {
     assert.match(template, /^ {4}uses: svassaux\/merge-gate\/\.github\/workflows\/gate\.yml@v1$/m);
     assert.match(template, /^ {4}secrets: inherit$/m);
+    assert.match(template, /^ {2}pull_request_target:$/m, 'the gate runs on the default branch, not as a check of the PR');
     assert.doesNotMatch(template, /^ {4}(if|concurrency|runs-on|steps):/m, 'nothing generic is copied into a repository');
   });
 
@@ -44,6 +46,11 @@ describe('the callers', () => {
 });
 
 describe('the shared job', () => {
+  it('acts on the pull request events of the template and of this repository', () => {
+    assert.ok(shared.includes("github.event_name == 'pull_request_target'"));
+    assert.ok(shared.includes("github.event_name == 'pull_request'"));
+  });
+
   it('runs the sweep only while a pull request awaits', () => {
     assert.ok(shared.includes(`contains(toJSON(vars), '${AWAIT_PREFIX}')`));
   });

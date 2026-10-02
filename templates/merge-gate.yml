@@ -4,10 +4,13 @@
 # Copy this file as .github/workflows/merge-gate.yml and adapt the marked line (# ADAPT) only. The job
 # itself lives once in svassaux/merge-gate (.github/workflows/gate.yml); GitHub requires the triggers
 # to stay here.
+# `pull_request_target`, not `pull_request`: its runs belong to the default branch, like the CI-completion
+# and sweep runs, so a pull request shows the gate once, as its `merge-gate` verdict, instead of also a
+# check for every run. Safe: the gate never checks out the pull request's code.
 name: merge-gate
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review, unlabeled]
   workflow_run:
     # The repository's CI workflows. Not Copilot's: a run it triggers waits for an approval that never

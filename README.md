@@ -55,7 +55,7 @@ wake the gate each time the state changes:
 
 | Change | Wakes the gate |
 | --- | --- |
-| push, hand-over, reopening | `pull_request` |
+| push, hand-over, reopening | `pull_request_target` (here `pull_request`): it runs on the default branch, so the pull request shows only the gate's verdict |
 | a CI workflow finished | `workflow_run` of the CI workflows |
 | Copilot submitted its review, or never answers | the `*/5` sweep, which runs only while a `MERGE_GATE_AWAIT_<n>` repository variable exists; a watcher that sees the review can wake the gate at once with `gh workflow run merge-gate.yml -f pr=<n>` |
 | a deployment's commit status settled | the same sweep |
