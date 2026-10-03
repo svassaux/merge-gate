@@ -30,7 +30,8 @@ on:
 jobs:
   gate:
     uses: svassaux/merge-gate/.github/workflows/gate.yml@v1
-    secrets: inherit
+    secrets:
+      GATE_TOKEN: ${{ secrets.GATE_TOKEN }}
     # Only when the CI's aggregate job is not named `verify`:
     # with:
     #   required-checks: <its name>

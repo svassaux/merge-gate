@@ -26,4 +26,5 @@ jobs:
     uses: ./.github/workflows/gate.yml
     with:
       local: true
-    secrets: inherit
+    secrets:
+      GATE_TOKEN: ${{ secrets.GATE_TOKEN }}

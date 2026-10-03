@@ -34,7 +34,7 @@ describe('the callers', () => {
 
   it('the template calls the released shared job and hands it the secret', () => {
     assert.match(template, /^ {4}uses: svassaux\/merge-gate\/\.github\/workflows\/gate\.yml@v1$/m);
-    assert.match(template, /^ {4}secrets: inherit$/m);
+    assert.match(template, /^ {4}secrets:\n {6}GATE_TOKEN: \$\{\{ secrets\.GATE_TOKEN \}\}$/m);
     assert.match(template, /^ {2}pull_request_target:$/m, 'the gate runs on the default branch, not as a check of the PR');
     assert.doesNotMatch(template, /^ {4}(if|concurrency|runs-on|steps):/m, 'nothing generic is copied into a repository');
   });
@@ -43,12 +43,21 @@ describe('the callers', () => {
     assert.match(selfCaller, /^ {4}uses: \.\/\.github\/workflows\/gate\.yml$/m);
     assert.match(selfCaller, /^ {6}local: true$/m);
   });
+
+  it('hand over the gate token only, never every secret of the repository', () => {
+    assert.match(selfCaller, /^ {6}GATE_TOKEN: \$\{\{ secrets\.GATE_TOKEN \}\}$/m);
+    for (const caller of [template, selfCaller]) assert.doesNotMatch(caller, /^\s*secrets:\s*inherit\s*$/m);
+  });
 });
 
 describe('the shared job', () => {
   it('acts on the pull request events of the template and of this repository', () => {
     assert.ok(shared.includes("github.event_name == 'pull_request_target'"));
     assert.ok(shared.includes("github.event_name == 'pull_request'"));
+  });
+
+  it('declares the one secret its callers hand over', () => {
+    assert.match(shared, /^ {4}secrets:\n {6}GATE_TOKEN:\n(?: {8}.*\n)*? {8}required: true$/m);
   });
 
   it('runs the sweep only while a pull request awaits', () => {

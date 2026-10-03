@@ -24,6 +24,12 @@ on:
         description: Run the action from the caller's checkout instead of the release (this repository's own pull requests).
         type: boolean
         default: false
+    # Declared, so a caller hands over this one secret instead of `secrets: inherit`: on
+    # `pull_request_target` the caller runs with the default branch's privileges, and the job needs nothing else.
+    secrets:
+      GATE_TOKEN:
+        description: A token of the repository owner, whose Copilot credits pay for the reviews (README, Install).
+        required: true
 
 jobs:
   gate:

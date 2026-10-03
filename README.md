@@ -79,7 +79,9 @@ gate the moment the review lands; the sweep is the fallback when nobody watches.
    so a change to its conditions, concurrency or defaults reaches every repository without a pull request.
 2. Set the `GATE_TOKEN` repository secret to a token of the repository owner. A classic PAT with
    `repo` and `workflow` scopes is enough. It must be able to read `copilot_internal/user`, so it is
-   the token of the account whose Copilot credits pay for the reviews.
+   the token of the account whose Copilot credits pay for the reviews. The caller hands the gate this
+   secret alone, never `secrets: inherit`: on `pull_request_target` it runs with the default branch's
+   privileges, and a mutable `@v1` reference must not receive the repository's other secrets.
 3. The `merge-gate` label is created the first time the gate uses it.
 
 The gate's own minutes (each run is billed one minute on a private repository) stay at a handful per
