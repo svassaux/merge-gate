@@ -198,8 +198,17 @@ function parseQuota(raw) {
   const q = raw.quota_snapshots?.premium_interactions;
   if (!q || q.has_quota === void 0 && q.remaining === void 0) return null;
   const remaining = typeof q.remaining === "number" ? q.remaining : null;
-  const exhausted = !q.unlimited && (q.has_quota === false || remaining !== null && remaining <= 0);
-  return { exhausted, remaining, resetAt: raw.quota_reset_date_utc ?? raw.quota_reset_date ?? null };
+  const spent = q.has_quota === false || remaining !== null && remaining <= 0;
+  const permitted = q.overage_permitted === true;
+  const overageRemaining = permitted && typeof q.overage_entitlement === "number" && typeof q.overage_count === "number" ? q.overage_entitlement - q.overage_count : null;
+  const overage = permitted && (overageRemaining === null || overageRemaining > 0);
+  const exhausted = !q.unlimited && spent && !overage;
+  return {
+    exhausted,
+    remaining,
+    overageRemaining,
+    resetAt: raw.quota_reset_date_utc ?? raw.quota_reset_date ?? null
+  };
 }
 async function readQuota(gh) {
   try {
@@ -399,7 +408,7 @@ async function gatePullRequest(gh, number, cfg, runUrl, opts = {}) {
     if (!registered) plan = decide(s, ci, { kind: "unreviewed", reason: "ignored" }, quota);
   }
   await apply(gh, s, plan, quota, runUrl);
-  const facts = `CI ${ci.state} \xB7 ${s.unresolvedThreads} fil(s) \xB7 revue ${review.kind}${quota ? ` \xB7 quota ${quota.remaining ?? "?"}` : ""}`;
+  const facts = `CI ${ci.state} \xB7 ${s.unresolvedThreads} fil(s) \xB7 revue ${review.kind}${quota ? ` \xB7 quota ${quota.remaining ?? "?"}${quota.overageRemaining === null ? "" : ` (overage ${quota.overageRemaining})`}` : ""}`;
   return `#${number} ${s.head.slice(0, 7)} \u2014 ${facts}${requested} \u2192 ${plan.kind}${plan.status ? ` : ${plan.status.description}` : ""}`;
 }
 

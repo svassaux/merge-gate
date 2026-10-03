@@ -101,9 +101,52 @@ describe('acting on a pull request', () => {
   it('asks nothing when the credits are exhausted, and opens with a note', async () => {
     const gh = new FakeGitHub(unreviewed());
     gh.quota = { quota_snapshots: { premium_interactions: { has_quota: false, remaining: 0 } } };
-    await gate(gh);
+    const line = await gate(gh);
     assert.ok(!gh.calls.includes('requestReviews'));
     assert.deepEqual(gh.calls.slice(0, 2), ['addComment', 'POST /statuses/' + gh.pr.headRefOid + ' success']);
+    // No allowance to report, so the line says nothing about one: printing `(overage null)` would
+    // put a number-shaped hole in the only trace of what the gate decided.
+    assert.doesNotMatch(line, /overage/);
+  });
+
+  it('asks nothing once the overage allowance is spent, and still reports the room in the line', async () => {
+    // Synthetic (no spent allowance was ever recorded). Two cases, because the room reported here is
+    // the one value that is NOT positive: exactly zero when the counter met the cap, and negative
+    // past it — token-based billing lets a single review cost more than what was left. Both have to
+    // appear in the line: a reading that prints the room only when it is truthy
+    // (`!quota.overageRemaining` instead of `=== null`) stays green on every other test and loses
+    // precisely the number that explains why the gate stopped asking.
+    for (const [spent, expected] of [
+      [{ overage_count: 4000, remaining: -4000 }, /quota -4000 \(overage 0\)/],
+      [{ overage_count: 4100, remaining: -4100 }, /quota -4100 \(overage -100\)/],
+    ] as [Record<string, number>, RegExp][]) {
+      const gh = new FakeGitHub(unreviewed());
+      gh.quota = {
+        quota_snapshots: {
+          premium_interactions: { has_quota: true, overage_permitted: true, overage_entitlement: 4000, unlimited: false, ...spent },
+        },
+      };
+      const line = await gate(gh);
+      assert.ok(!gh.calls.includes('requestReviews'), JSON.stringify(spent));
+      assert.ok(gh.calls.includes('addComment'), JSON.stringify(spent));
+      assert.match(line, expected);
+    }
+  });
+
+  it('still asks past the included entitlement, on the answer measured on 2026-10-03', async () => {
+    // The whole point of reading the overage: this is what the endpoint answered seven minutes after
+    // the gate opened loudwear #18 unreviewed on `remaining <= 0`. Nothing is published about the
+    // credits here — the pull request waits for the review, and the line says what was left to bill.
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = {
+      quota_snapshots: {
+        premium_interactions: { has_quota: true, remaining: -422, overage_permitted: true, overage_count: 421, overage_entitlement: 4000, unlimited: false },
+      },
+    };
+    const line = await gate(gh);
+    assert.ok(gh.calls.includes('requestReviews'));
+    assert.ok(!gh.calls.includes('addComment'));
+    assert.match(line, /quota -422 \(overage 3579\)/);
   });
 
   it('edits its note on a new head instead of adding a second one', async () => {

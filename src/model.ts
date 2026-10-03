@@ -76,6 +76,14 @@ export interface Config {
 
 export interface Quota {
   exhausted: boolean;
+  /** Of the included entitlement. Negative past it, which is not the same as out of credits. */
   remaining: number | null;
+  /**
+   * Of the overage allowance GitHub keeps billing against once the entitlement is spent. `null` when
+   * no overage is permitted, and when the answer permits one without sizing it. Negative when the
+   * counter has gone past the cap, which token-based billing (`true` on the 2026-10-03 payload)
+   * would allow — a single review costing more than the room that was left. Never observed.
+   */
+  overageRemaining: number | null;
   resetAt: string | null;
 }

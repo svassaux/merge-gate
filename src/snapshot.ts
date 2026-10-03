@@ -193,20 +193,68 @@ interface RawQuota {
   quota_reset_date_utc?: string;
   quota_reset_date?: string;
   quota_snapshots?: {
-    premium_interactions?: { has_quota?: boolean; remaining?: number; unlimited?: boolean };
+    premium_interactions?: {
+      has_quota?: boolean;
+      remaining?: number;
+      unlimited?: boolean;
+      overage_permitted?: boolean;
+      overage_count?: number;
+      overage_entitlement?: number;
+    };
   };
 }
 
 /**
  * The token owner's Copilot premium-request quota. The endpoint is undocumented: an answer it does not
- * give, or gives in another shape, reads as unknown — and an unknown quota never stops a request.
+ * give, or gives in another shape, reads as unknown — and an unknown quota never stops a request. The
+ * one exception is permission to overspend, read below as a strict yes/no: not a yes means no.
  */
 export function parseQuota(raw: RawQuota): Quota | null {
   const q = raw.quota_snapshots?.premium_interactions;
   if (!q || (q.has_quota === undefined && q.remaining === undefined)) return null;
   const remaining = typeof q.remaining === 'number' ? q.remaining : null;
-  const exhausted = !q.unlimited && (q.has_quota === false || (remaining !== null && remaining <= 0));
-  return { exhausted, remaining, resetAt: raw.quota_reset_date_utc ?? raw.quota_reset_date ?? null };
+  // `remaining` counts the INCLUDED entitlement and goes negative past it, which is not the same as
+  // out of credits: where overage is permitted, GitHub bills against a second allowance, and Copilot
+  // is expected to keep answering. What was measured on 2026-10-03, in order: Copilot reviewed head
+  // `dfb9c04` of loudwear #18 at 16:59:16Z; the branch was force-pushed to `04944ce` at 17:01:58Z;
+  // the gate wrote "crédits Copilot épuisés" on that new head, on `remaining <= 0` alone, and its
+  // log line for that run reads `quota -422` (17:04:02Z, the time of the line); at 17:10:58Z this
+  // endpoint answered `remaining: -422`, `overage_permitted: true`, `overage_count: 421` against an
+  // `overage_entitlement` of 4000; and a later run logged `quota -422` again at 17:18:03Z, on
+  // `07ec8e9`. The two log lines bracket the full payload at the same `remaining`. The quota AT
+  // 16:59:16Z, when the review was served, is the one moment nothing recorded — so whether that
+  // review was billed to the overage is not established. What the readings do establish is the
+  // arithmetic: the second allowance was open and a tenth spent while the gate was calling the
+  // credits gone, so `remaining <= 0` read as exhausted opens pull requests unreviewed from the
+  // moment the entitlement runs out until the monthly reset.
+  //
+  // The silence of 2026-09-30 fits this reading rather than contradicting it. A note dated that day
+  // in this workspace's GitHub skill — not versioned, so it cannot be re-read at a commit — records
+  // `remaining: -4171` against a 7000 entitlement, `overage_permitted: true`, and every request going
+  // silent. If the overage cap was 4000 that day too (unmeasured), then −4171 is PAST it, and the
+  // reading below calls that day exhausted — which is what the silence showed. Where it would still
+  // ask into silence, the other paths catch it: the request is dropped within 20 s, or the review
+  // never comes, and both open the pull request unreviewed.
+  const spent = q.has_quota === false || (remaining !== null && remaining <= 0);
+  // Permission and room are read differently, on purpose. Room that the answer does not size reads
+  // as unknown, and an unknown quota never stops a request — the same rule as the shape check above.
+  // Permission is a yes/no, so anything that is not the boolean `true` is not a yes: inventing it
+  // from another shape would make the gate wait 20 s for a review it cannot get, on every head where
+  // one is due, from the moment the entitlement is spent. A cap of 0 therefore reads as no room;
+  // whether the endpoint uses 0 for an uncapped overage is unmeasured.
+  const permitted = q.overage_permitted === true;
+  const overageRemaining =
+    permitted && typeof q.overage_entitlement === 'number' && typeof q.overage_count === 'number'
+      ? q.overage_entitlement - q.overage_count
+      : null;
+  const overage = permitted && (overageRemaining === null || overageRemaining > 0);
+  const exhausted = !q.unlimited && spent && !overage;
+  return {
+    exhausted,
+    remaining,
+    overageRemaining,
+    resetAt: raw.quota_reset_date_utc ?? raw.quota_reset_date ?? null,
+  };
 }
 
 export async function readQuota(gh: Api): Promise<Quota | null> {

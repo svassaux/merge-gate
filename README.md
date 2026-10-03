@@ -33,7 +33,15 @@ depends on the other.
    - takes the label off;
    - publishes `merge-gate` as success.
 5. **Copilot unavailable never blocks.**
-   - The gate reads the quota before asking. With the credits exhausted, it asks nothing.
+   - The gate reads the quota before asking, and asks nothing once the credits are gone. Gone means
+     both allowances: past the included entitlement `remaining` goes negative, but where overage is
+     permitted GitHub bills against a second allowance and Copilot is expected to keep answering — so
+     the gate keeps asking until that one is spent too. What was read on 2026-10-03:
+     `overage_count: 421` of an `overage_entitlement` of 4000, while `remaining` was −422. That a
+     review the gate asks for is then billed to that counter is the expectation, not a measurement.
+     An answer that permits an overage without sizing it counts as room, because an unknown quota
+     never stops a request: if
+     Copilot has nothing left, the request is dropped instead, which the next point covers.
    - A request that does not reach Copilot's queue within 20 s was dropped. Copilot without credits
      drops a request silently.
    - A review still queued after 20 minutes will not come.

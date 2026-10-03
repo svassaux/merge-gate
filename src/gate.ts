@@ -107,6 +107,6 @@ export async function gatePullRequest(gh: Api, number: number, cfg: Config, runU
     if (!registered) plan = decide(s, ci, { kind: 'unreviewed', reason: 'ignored' }, quota);
   }
   await apply(gh, s, plan, quota, runUrl);
-  const facts = `CI ${ci.state} · ${s.unresolvedThreads} fil(s) · revue ${review.kind}${quota ? ` · quota ${quota.remaining ?? '?'}` : ''}`;
+  const facts = `CI ${ci.state} · ${s.unresolvedThreads} fil(s) · revue ${review.kind}${quota ? ` · quota ${quota.remaining ?? '?'}${quota.overageRemaining === null ? '' : ` (overage ${quota.overageRemaining})`}` : ''}`;
   return `#${number} ${s.head.slice(0, 7)} — ${facts}${requested} → ${plan.kind}${plan.status ? ` : ${plan.status.description}` : ''}`;
 }
