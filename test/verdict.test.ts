@@ -4,8 +4,8 @@ import type { Config, Quota, Snapshot } from '../src/model.ts';
 import { ciVerdict, decide, reviewState } from '../src/verdict.ts';
 import { ago, cfg, check, GREEN, HEAD, held, NOW, OLD, reviewed, snap } from './helpers.ts';
 
-const QUOTA_OK: Quota = { exhausted: false, remaining: 1600, resetAt: '2026-11-01T00:00:00.000Z' };
-const QUOTA_OUT: Quota = { exhausted: true, remaining: 0, resetAt: '2026-11-01T00:00:00.000Z' };
+const QUOTA_OK: Quota = { exhausted: false, remaining: 1600, overageRemaining: null, resetAt: '2026-11-01T00:00:00.000Z' };
+const QUOTA_OUT: Quota = { exhausted: true, remaining: 0, overageRemaining: 0, resetAt: '2026-11-01T00:00:00.000Z' };
 
 function run(s: Snapshot, quota: Quota | null = QUOTA_OK, c: Config = cfg) {
   return decide(s, ciVerdict(s.checks, c), reviewState(s, c, NOW), quota);
