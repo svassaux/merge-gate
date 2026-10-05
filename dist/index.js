@@ -253,7 +253,7 @@ function minutesSince(iso, now) {
 }
 function reviewState(s, cfg, now) {
   const last = s.copilotReviews.at(-1);
-  const due = !last || last.comments > 0 && last.commit !== s.head;
+  const due = !last;
   if (s.copilotQueued) {
     const since = s.copilotRequestedAt ?? s.labeledAt;
     if (since && minutesSince(since, now) >= COPILOT_TIMEOUT_MIN) {
@@ -263,7 +263,7 @@ function reviewState(s, cfg, now) {
   }
   if (!due) return { kind: "done" };
   if (s.note?.head === s.head) return { kind: "unreviewed", reason: s.note.reason };
-  if (cfg.firstReview === "ruleset" && !last) {
+  if (cfg.firstReview === "ruleset") {
     if (!s.labeledAt || minutesSince(s.labeledAt, now) < RULESET_GRACE_MIN) return { kind: "grace" };
   }
   return { kind: "due" };

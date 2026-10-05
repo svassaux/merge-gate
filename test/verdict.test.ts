@@ -85,17 +85,8 @@ describe('Copilot review', () => {
     assert.equal(reviewState(snap({ copilotReviews: [reviewed(OLD, 0)] }), cfg, NOW).kind, 'done');
   });
 
-  it('is due when the last review opened threads and the head moved since', () => {
-    assert.equal(reviewState(snap({ copilotReviews: [reviewed(OLD, 2)] }), cfg, NOW).kind, 'due');
-  });
-
-  it('is not due when the last review opened threads on this very head — they were answered without a push', () => {
-    assert.equal(reviewState(snap({ copilotReviews: [reviewed(HEAD, 2)] }), cfg, NOW).kind, 'done');
-  });
-
-  it('reads the latest review, not the first', () => {
-    const s = snap({ copilotReviews: [reviewed(OLD, 3, 30), reviewed(HEAD, 0, 2)] });
-    assert.equal(reviewState(s, cfg, NOW).kind, 'done');
+  it('is not due after a review that opened threads, even once a push answered them — one review per pull request', () => {
+    assert.equal(reviewState(snap({ copilotReviews: [reviewed(OLD, 2)] }), cfg, NOW).kind, 'done');
   });
 
   it('waits while Copilot is queued', () => {
@@ -118,6 +109,11 @@ describe('Copilot review', () => {
     assert.equal(reviewState(s, cfg, NOW).kind, 'done');
   });
 
+  it('stops waiting once the 20 minutes are up after a review that opened threads — no second review is owed', () => {
+    const s = snap({ copilotQueued: true, copilotRequestedAt: ago(21), copilotReviews: [reviewed(OLD, 2)] });
+    assert.equal(reviewState(s, cfg, NOW).kind, 'done');
+  });
+
   it('takes the recorded verdict for this head instead of asking again', () => {
     const s = snap({ note: { id: 'IC_1', head: HEAD, reason: 'ignored' } });
     assert.deepEqual(reviewState(s, cfg, NOW), { kind: 'unreviewed', reason: 'ignored' });
@@ -136,8 +132,8 @@ describe('Copilot review', () => {
     it('asks itself once the ruleset let 5 minutes pass', () => {
       assert.equal(reviewState(held({ labeledAt: ago(5) }), ruleset, NOW).kind, 'due');
     });
-    it('asks for a re-review at once — the ruleset only ever gives the first', () => {
-      assert.equal(reviewState(held({ labeledAt: ago(1), copilotReviews: [reviewed(OLD, 1)] }), ruleset, NOW).kind, 'due');
+    it('never asks for a second review — the one the ruleset gave is the only one', () => {
+      assert.equal(reviewState(held({ labeledAt: ago(1), copilotReviews: [reviewed(OLD, 1)] }), ruleset, NOW).kind, 'done');
     });
   });
 });
@@ -185,8 +181,8 @@ describe('decision', () => {
     assert.deepEqual([plan.kind, plan.label, plan.draft], ['hold', 'add', 'to-draft']);
   });
 
-  it('never asks while a thread is open, and says the author must act', () => {
-    const plan = run(held({ copilotReviews: [reviewed(OLD, 2)], unresolvedThreads: 2 }));
+  it('never asks while a thread is open — a human\'s, before Copilot reviewed — and says the author must act', () => {
+    const plan = run(held({ unresolvedThreads: 2 }));
     assert.equal(plan.request, false);
     assert.equal(plan.awaiting, false);
     assert.equal(plan.status?.state, 'failure');
@@ -218,10 +214,10 @@ describe('decision', () => {
     assert.equal(plan.awaiting, false);
   });
 
-  it('asks for the re-review once the threads are resolved after a push', () => {
+  it('opens once the threads are resolved after a push, without asking Copilot again', () => {
     const plan = run(held({ copilotReviews: [reviewed(OLD, 2)] }));
-    assert.equal(plan.request, true);
-    assert.equal(plan.kind, 'hold');
+    assert.equal(plan.request, false);
+    assert.equal(plan.kind, 'open');
   });
 
   it('asks when the quota cannot be read', () => {
