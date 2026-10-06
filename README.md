@@ -16,19 +16,17 @@ depends on the other.
    - puts the `merge-gate` label on, meaning "finalized, kept by the gate";
    - draws the pull request back to draft until everything is green. On a repository without
      branch protection, the draft is what keeps the Merge button disabled.
-3. **Copilot is asked only when a review is due:**
-   - the pull request has no Copilot review yet; or
-   - the last review opened threads and the head moved since, i.e. a push that answers them.
-
-   A push after a clean review costs no review. The gate never asks:
+3. **Copilot reviews a pull request once.** The gate asks while the pull request has no Copilot review;
+   a request that yielded none (credits exhausted, request ignored) is tried again on the next head.
+   Every push after the review, those answering its threads included, costs none. The gate never asks:
    - while Copilot is already queued (a second request would strand in the queue);
    - while a thread is open;
    - while the CI is red;
    - on a work draft.
 
-   With `first-review: ruleset`, a repository ruleset asks for the first review. The gate gives it
+   With `first-review: ruleset`, a repository ruleset asks for that review. The gate gives it
    5 minutes, then asks itself.
-4. **Opening.** When the CI is green, no thread is open and the due review is in, the gate:
+4. **Opening.** When the CI is green, no thread is open and the review is in, the gate:
    - marks the pull request ready;
    - takes the label off;
    - publishes `merge-gate` as success.

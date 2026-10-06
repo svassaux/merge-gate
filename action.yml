@@ -5,7 +5,7 @@ inputs:
     description: A token of the repository owner (the GATE_TOKEN secret). GITHUB_TOKEN cannot draw a pull request back to draft.
     required: true
   first-review:
-    description: "`gate`: the gate asks Copilot for the first review. `ruleset`: a repository ruleset asks for it, the gate only for the re-reviews."
+    description: "`gate`: the gate asks Copilot for the pull request's one review. `ruleset`: a repository ruleset asks for it; the gate asks itself when no review came after 5 minutes."
     default: gate
   required-checks:
     description: Checks that must be present and green on the head, comma-separated — the CI's aggregate job.

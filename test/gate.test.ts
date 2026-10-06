@@ -85,6 +85,15 @@ describe('acting on a pull request', () => {
     ]);
   });
 
+  it('asks nothing after a push that answered the review\'s threads — Copilot reviews a pull request once', async () => {
+    const pr = recorded(); // one Copilot review that opened a thread, since resolved
+    pr.reviews.nodes = pr.reviews.nodes.map((r) => r && { ...r, commit: { oid: 'a'.repeat(40) } });
+    const gh = new FakeGitHub(pr);
+    await gate(gh);
+    assert.ok(!gh.calls.includes('requestReviews'));
+    assert.ok(gh.calls.includes('POST /statuses/' + pr.headRefOid + ' success'));
+  });
+
   it('opens without the review when Copilot never queues the request — and leaves a note', async () => {
     const gh = new FakeGitHub(unreviewed());
     gh.queueAfterRequest = false;

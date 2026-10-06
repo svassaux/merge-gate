@@ -17,7 +17,7 @@ on:
         type: string
         default: ''
       first-review:
-        description: "`gate`: the gate asks Copilot for the first review. `ruleset`: a repository ruleset asks for it."
+        description: "`gate`: the gate asks Copilot for the pull request's one review. `ruleset`: a repository ruleset asks for it; the gate asks itself when no review came after 5 minutes."
         type: string
         default: gate
       local:

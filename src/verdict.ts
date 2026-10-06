@@ -96,13 +96,12 @@ function minutesSince(iso: string, now: Date): number {
 }
 
 /**
- * Where the head stands with Copilot. A review is due when the pull request has none yet, or when the
- * last one opened threads and the head moved since — a push answering them. A push after a clean
- * review costs no review.
+ * Where the head stands with Copilot. Copilot reviews a pull request once: a review is due only while the
+ * pull request has none. Every later push, those answering its threads included, costs no review.
  */
 export function reviewState(s: Snapshot, cfg: Config, now: Date): Review {
   const last = s.copilotReviews.at(-1);
-  const due = !last || (last.comments > 0 && last.commit !== s.head);
+  const due = !last;
   if (s.copilotQueued) {
     const since = s.copilotRequestedAt ?? s.labeledAt;
     if (since && minutesSince(since, now) >= COPILOT_TIMEOUT_MIN) {
@@ -112,7 +111,7 @@ export function reviewState(s: Snapshot, cfg: Config, now: Date): Review {
   }
   if (!due) return { kind: 'done' };
   if (s.note?.head === s.head) return { kind: 'unreviewed', reason: s.note.reason };
-  if (cfg.firstReview === 'ruleset' && !last) {
+  if (cfg.firstReview === 'ruleset') {
     if (!s.labeledAt || minutesSince(s.labeledAt, now) < RULESET_GRACE_MIN) return { kind: 'grace' };
   }
   return { kind: 'due' };
