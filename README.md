@@ -5,9 +5,10 @@ the CI is green, Copilot has reviewed it, and no review thread is open. Then it 
 ready, which unlocks the Merge button. When Copilot is out of credits, or does not answer, the gate
 opens the pull request without the review and says so: it never blocks on Copilot.
 
-The same code serves every repository. The `svassaux` repositories use this copy. The FoodMeUp
-repositories use a private copy, `FoodMeUp/merge-gate`, published at the same tag, so neither owner
-depends on the other.
+The same code serves every repository: the `svassaux` repositories call this public repository at
+`@v1`, and the FoodMeUp ones are to do the same, melba first (FoodMeUp/melba#150). A private
+repository cannot call a workflow of another owner's private repository, hence public since
+2026-10-07; the history holds no credential.
 
 ## The contract
 
@@ -123,5 +124,3 @@ pnpm check
 git tag v1.x.y && git push origin v1.x.y
 gh api -X PATCH repos/svassaux/merge-gate/git/refs/tags/v1 --raw-field sha="$(git rev-parse HEAD)" --field force=true
 ```
-
-Then publish the same tag to `FoodMeUp/merge-gate`.
