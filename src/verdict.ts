@@ -70,17 +70,35 @@ function excluded(c: Check, cfg: Config): boolean {
   );
 }
 
+/** How much a run says about the code: a result or a run in flight, then a cancelled run, then a stale one. */
+const WEIGHT: Record<Check['state'], number> = { success: 2, failure: 2, pending: 2, cancelled: 1, ignored: 0 };
+
+/**
+ * The run of a check that speaks for it: the latest one, except that a cancelled run yields to any
+ * non-cancelled run of the same check, whichever started later. A second batch of the same workflow
+ * on one commit cancels the first (`cancel-in-progress`, or the gate's own draft conversion firing
+ * `converted_to_draft` seconds after the push), and the cancelled jobs can carry the later
+ * `startedAt`. Alone, or beside only stale runs, a cancelled run fails. Known limit: a run cancelled
+ * by hand after an earlier pass of the same check leaves that pass standing — the rollup covers one
+ * head commit, so the pass is of the same code.
+ */
+function speaking(a: Check | undefined, b: Check): Check {
+  if (!a) return b;
+  const weight = WEIGHT[b.state] - WEIGHT[a.state];
+  if (weight !== 0) return weight > 0 ? b : a;
+  return b.at > a.at ? b : a;
+}
+
 /** The CI verdict on the head, the gate's and Copilot's own checks left out. */
 export function ciVerdict(checks: readonly Check[], cfg: Config): Ci {
   const latest = new Map<string, Check>();
   for (const c of checks) {
     if (excluded(c, cfg)) continue;
     const key = `${c.workflow}\u0000${c.name}`;
-    const seen = latest.get(key);
-    if (!seen || c.at > seen.at) latest.set(key, c);
+    latest.set(key, speaking(latest.get(key), c));
   }
   const kept = [...latest.values()].filter((c) => c.state !== 'ignored');
-  const failing = kept.filter((c) => c.state === 'failure').map((c) => c.name);
+  const failing = kept.filter((c) => c.state === 'failure' || c.state === 'cancelled').map((c) => c.name);
   const running = kept.filter((c) => c.state === 'pending');
   const pending = running.map((c) => c.name);
   for (const name of cfg.requiredChecks) {

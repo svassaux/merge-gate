@@ -21,7 +21,8 @@ export const RULESET_GRACE_MIN = 5;
 /** How long a request gets to show up in the review queue before the gate calls it ignored. */
 export const REGISTER_WAIT_S = 20;
 
-export type CheckState = 'success' | 'failure' | 'pending' | 'ignored';
+/** `cancelled`: a run stopped before its end — a failure on its own, nothing once a non-cancelled run of the check exists. */
+export type CheckState = 'success' | 'failure' | 'pending' | 'ignored' | 'cancelled';
 
 export interface Check {
   /** Workflow of an Actions check run; empty for a commit status or another app's check. */

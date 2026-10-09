@@ -47,7 +47,7 @@ describe('reading a real pull request', () => {
   });
 
   it("finds the CI green once the old gate's cancelled run and per-PR status are left out", () => {
-    assert.ok(s.checks.some((c) => c.workflow === 'merge-gate' && c.state === 'failure'));
+    assert.ok(s.checks.some((c) => c.workflow === 'merge-gate' && c.state === 'cancelled'));
     assert.equal(ciVerdict(s.checks, cfg).state, 'green');
   });
 
@@ -130,6 +130,22 @@ describe('the gate’s own marks', () => {
     });
     const s = parseSnapshot(raw);
     assert.equal(ciVerdict(s.checks, cfg).state, 'pending');
+  });
+
+  it('reads a cancelled job as cancelled, so a later batch of the same workflow can replace it', () => {
+    const raw = structuredClone(base);
+    raw.commits.nodes[0]!.commit.statusCheckRollup!.contexts.nodes.push({
+      __typename: 'CheckRun',
+      name: 'verify',
+      status: 'COMPLETED',
+      conclusion: 'CANCELLED',
+      startedAt: '2026-10-02T11:30:00Z',
+      completedAt: '2026-10-02T11:30:05Z',
+      checkSuite: { workflowRun: { workflow: { name: 'CI' } } },
+    });
+    const s = parseSnapshot(raw);
+    assert.ok(s.checks.some((c) => c.name === 'verify' && c.state === 'cancelled'));
+    assert.equal(ciVerdict(s.checks, cfg).state, 'green', 'the completed run of verify in the fixture speaks');
   });
 
   it('ignores a deployment cancelled because a second one replaced it, and fails one that errored', () => {
