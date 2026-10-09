@@ -113,7 +113,9 @@ function toCheck(c: Context): Check {
       ? 'success'
       : c.conclusion === 'STALE'
         ? 'ignored'
-        : 'failure';
+        : c.conclusion === 'CANCELLED'
+          ? 'cancelled'
+          : 'failure';
   return { workflow, name: c.name, state, at: c.startedAt ?? c.completedAt ?? '' };
 }
 

@@ -132,7 +132,7 @@ function toCheck(c) {
   }
   const workflow = c.checkSuite?.workflowRun?.workflow?.name ?? "";
   if (c.status !== "COMPLETED") return { workflow, name: c.name, state: "pending", at: c.startedAt ?? NOT_STARTED };
-  const state = c.conclusion === "SUCCESS" || c.conclusion === "NEUTRAL" || c.conclusion === "SKIPPED" ? "success" : c.conclusion === "STALE" ? "ignored" : "failure";
+  const state = c.conclusion === "SUCCESS" || c.conclusion === "NEUTRAL" || c.conclusion === "SKIPPED" ? "success" : c.conclusion === "STALE" ? "ignored" : c.conclusion === "CANCELLED" ? "cancelled" : "failure";
   return { workflow, name: c.name, state, at: c.startedAt ?? c.completedAt ?? "" };
 }
 var NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|ignored|timeout)/;
@@ -229,16 +229,22 @@ var DESCRIPTION_MAX = 140;
 function excluded(c, cfg) {
   return c.workflow === cfg.ownWorkflow || c.workflow === COPILOT_WORKFLOW || c.name === COPILOT_LOGIN || c.name.startsWith(CONTEXT) || cfg.ignoreChecks.includes(c.name);
 }
+var WEIGHT = { success: 2, failure: 2, pending: 2, cancelled: 1, ignored: 0 };
+function speaking(a, b) {
+  if (!a) return b;
+  const weight = WEIGHT[b.state] - WEIGHT[a.state];
+  if (weight !== 0) return weight > 0 ? b : a;
+  return b.at > a.at ? b : a;
+}
 function ciVerdict(checks, cfg) {
   const latest = /* @__PURE__ */ new Map();
   for (const c of checks) {
     if (excluded(c, cfg)) continue;
     const key = `${c.workflow}\0${c.name}`;
-    const seen = latest.get(key);
-    if (!seen || c.at > seen.at) latest.set(key, c);
+    latest.set(key, speaking(latest.get(key), c));
   }
   const kept = [...latest.values()].filter((c) => c.state !== "ignored");
-  const failing = kept.filter((c) => c.state === "failure").map((c) => c.name);
+  const failing = kept.filter((c) => c.state === "failure" || c.state === "cancelled").map((c) => c.name);
   const running = kept.filter((c) => c.state === "pending");
   const pending = running.map((c) => c.name);
   for (const name of cfg.requiredChecks) {
