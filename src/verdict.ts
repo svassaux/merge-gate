@@ -94,7 +94,7 @@ export function ciVerdict(checks: readonly Check[], cfg: Config): Ci {
   const latest = new Map<string, Check>();
   for (const c of checks) {
     if (excluded(c, cfg)) continue;
-    const key = `${c.workflow}\u0000${c.name}`;
+    const key = `${c.workflowId ?? c.workflow}\u0000${c.name}`;
     latest.set(key, speaking(latest.get(key), c));
   }
   const kept = [...latest.values()].filter((c) => c.state !== 'ignored');

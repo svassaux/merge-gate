@@ -25,7 +25,7 @@ export const SNAPSHOT_QUERY = `query($owner:String!,$name:String!,$number:Int!){
         ... on LabeledEvent{createdAt label{name}}}}
       comments(last:100){nodes{id body}}
       commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){nodes{__typename
-        ... on CheckRun{name status conclusion startedAt completedAt checkSuite{workflowRun{workflow{name}}}}
+        ... on CheckRun{name status conclusion startedAt completedAt checkSuite{conclusion workflowRun{databaseId workflow{databaseId name}}}}
         ... on StatusContext{context state description createdAt}}}}}}}
     }
   }
@@ -64,7 +64,11 @@ type Context =
       conclusion: string | null;
       startedAt: string | null;
       completedAt: string | null;
-      checkSuite: { workflowRun: { workflow: { name: string } | null } | null } | null;
+      checkSuite: {
+        /** Of the whole workflow run: `CANCELLED` whatever its jobs ended on. */
+        conclusion: string | null;
+        workflowRun: { databaseId: number | null; workflow: { databaseId?: number | null; name: string } | null } | null;
+      } | null;
     }
   | { __typename: 'StatusContext'; context: string; state: string; description: string | null; createdAt: string };
 
@@ -93,7 +97,37 @@ const present = <T>(nodes: (T | null)[]): T[] => nodes.filter((n): n is T => n !
 /** A queued check sorts after every started one: it is the newest run of its name. */
 const NOT_STARTED = '￿';
 
-function toCheck(c: Context): Check {
+type CheckRun = Extract<Context, { __typename: 'CheckRun' }>;
+
+const runId = (c: CheckRun) => c.checkSuite?.workflowRun?.databaseId ?? null;
+
+/**
+ * The workflow runs a later run of the same workflow replaced on this commit: cancelled, with a run of
+ * the same workflow and a higher run id on this head. Same workflow means same workflow id (two files
+ * can both be named `CI`); the name is used only when the id is missing. A second event on the same
+ * head — the gate's own draft conversion, a `ready_for_review` — cancels the run in flight
+ * (`cancel-in-progress`; a new push would move the head instead), and what that run left behind says
+ * nothing about the code: jobs named
+ * for a matrix it never expanded (`test`, where the next run has `test (1)`), an aggregator that
+ * concluded `failure` for "a required job failed: cancelled". A cancelled run that is the latest of its
+ * workflow is not here: nothing replaced it, and it still fails the head. Run ids grow with time.
+ */
+function supersededRuns(contexts: readonly Context[]): Set<number> {
+  const newest = new Map<string, number>();
+  const cancelled: { workflow: string; id: number }[] = [];
+  for (const c of contexts) {
+    if (c.__typename !== 'CheckRun') continue;
+    const wf = c.checkSuite?.workflowRun?.workflow;
+    const workflow = wf ? (wf.databaseId != null ? `#${wf.databaseId}` : wf.name) : undefined;
+    const id = runId(c);
+    if (!workflow || id === null) continue;
+    newest.set(workflow, Math.max(newest.get(workflow) ?? 0, id));
+    if (c.checkSuite?.conclusion === 'CANCELLED') cancelled.push({ workflow, id });
+  }
+  return new Set(cancelled.filter((r) => r.id < (newest.get(r.workflow) ?? 0)).map((r) => r.id));
+}
+
+function toCheck(c: Context, superseded: ReadonlySet<number>): Check {
   if (c.__typename === 'StatusContext') {
     const state =
       c.state === 'SUCCESS'
@@ -106,8 +140,14 @@ function toCheck(c: Context): Check {
             : 'failure';
     return { workflow: '', name: c.context, state, at: c.createdAt };
   }
-  const workflow = c.checkSuite?.workflowRun?.workflow?.name ?? '';
-  if (c.status !== 'COMPLETED') return { workflow, name: c.name, state: 'pending', at: c.startedAt ?? NOT_STARTED };
+  const wf = c.checkSuite?.workflowRun?.workflow;
+  const workflow = wf?.name ?? '';
+  const of = wf?.databaseId != null ? { workflow, workflowId: wf.databaseId } : { workflow };
+  const at = c.startedAt ?? c.completedAt ?? '';
+  const id = runId(c);
+  // The suite's own conclusion too: a re-run attempt keeps its run id, and must not be hidden with it.
+  if (id !== null && superseded.has(id) && c.checkSuite?.conclusion === 'CANCELLED') return { ...of, name: c.name, state: 'ignored', at };
+  if (c.status !== 'COMPLETED') return { ...of, name: c.name, state: 'pending', at: c.startedAt ?? NOT_STARTED };
   const state =
     c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED'
       ? 'success'
@@ -116,7 +156,7 @@ function toCheck(c: Context): Check {
         : c.conclusion === 'CANCELLED'
           ? 'cancelled'
           : 'failure';
-  return { workflow, name: c.name, state, at: c.startedAt ?? c.completedAt ?? '' };
+  return { ...of, name: c.name, state, at };
 }
 
 const NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|ignored|timeout)/;
@@ -135,6 +175,7 @@ export function parseSnapshot(pr: RawPullRequest): Snapshot {
   const latest = (times: (string | undefined)[]) => times.filter((t): t is string => !!t).sort().at(-1) ?? null;
   const commit = present(pr.commits.nodes)[0]?.commit;
   const contexts = present(commit?.statusCheckRollup?.contexts.nodes ?? []);
+  const superseded = supersededRuns(contexts);
   const gate = contexts.find((c) => c.__typename === 'StatusContext' && c.context === CONTEXT);
   const notes = present(pr.comments.nodes).map(toNote).filter((n): n is Note => n !== null);
   return {
@@ -154,7 +195,7 @@ export function parseSnapshot(pr: RawPullRequest): Snapshot {
       .map((r) => ({ commit: r.commit!.oid, submittedAt: r.submittedAt!, comments: r.comments.totalCount }))
       .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt)),
     unresolvedThreads: present(pr.reviewThreads.nodes).filter((t) => !t.isResolved).length,
-    checks: contexts.map(toCheck),
+    checks: contexts.map((c) => toCheck(c, superseded)),
     gateStatus: gate?.__typename === 'StatusContext' ? { state: gate.state.toLowerCase(), description: gate.description ?? '' } : null,
     note: notes.at(-1) ?? null,
   };

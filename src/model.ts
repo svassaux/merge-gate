@@ -21,12 +21,18 @@ export const RULESET_GRACE_MIN = 5;
 /** How long a request gets to show up in the review queue before the gate calls it ignored. */
 export const REGISTER_WAIT_S = 20;
 
-/** `cancelled`: a run stopped before its end — a failure on its own, nothing once a non-cancelled run of the check exists. */
+/**
+ * `cancelled`: a run stopped before its end — a failure on its own, nothing once a non-cancelled run of the check exists.
+ * `ignored`: says nothing about the code — a stale run, a deployment a second one superseded, or any job of a cancelled workflow
+ *   run that a later run of that workflow replaced.
+ */
 export type CheckState = 'success' | 'failure' | 'pending' | 'ignored' | 'cancelled';
 
 export interface Check {
   /** Workflow of an Actions check run; empty for a commit status or another app's check. */
   workflow: string;
+  /** Tells apart two workflow files of the same name; absent when the rollup does not give it. */
+  workflowId?: number;
   name: string;
   state: CheckState;
   /** Orders several runs of the same check: the latest one speaks. */
