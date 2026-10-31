@@ -65,6 +65,38 @@ describe('CI verdict', () => {
     assert.equal(ciVerdict(checks, cfg).state, 'pending');
   });
 
+  it('lets a cancelled run yield to the batch that replaced it, whichever started later', () => {
+    // filterwise #146, 2026-10-09: the push started a batch at :20, the gate's draft conversion a second at :27;
+    // the first was cancelled, and its jobs' startedAt (:32) came after the second's (:27).
+    const checks = [check('verify', 'success', { at: ago(9) }), check('verify', 'cancelled', { at: ago(2) })];
+    assert.equal(ciVerdict(checks, cfg).state, 'green');
+    assert.equal(ciVerdict([check('verify', 'pending', { at: ago(9) }), check('verify', 'cancelled', { at: ago(2) })], cfg).state, 'pending');
+    assert.equal(ciVerdict([check('verify', 'failure', { at: ago(9) }), check('verify', 'cancelled', { at: ago(2) })], cfg).state, 'red');
+  });
+
+  it('whatever order the rollup lists the two runs in', () => {
+    const checks = [check('verify', 'cancelled', { at: ago(2) }), check('verify', 'success', { at: ago(9) })];
+    assert.equal(ciVerdict(checks, cfg).state, 'green');
+  });
+
+  it('fails a cancelled run that nothing replaced, and names it', () => {
+    const ci = ciVerdict([check('verify', 'cancelled')], cfg);
+    assert.equal(ci.state, 'red');
+    assert.deepEqual(ci.failing, ['verify']);
+  });
+
+  it('fails two cancelled runs of one check, naming it once', () => {
+    const ci = ciVerdict([check('verify', 'cancelled', { at: ago(9) }), check('verify', 'cancelled', { at: ago(2) })], cfg);
+    assert.equal(ci.state, 'red');
+    assert.deepEqual(ci.failing, ['verify']);
+  });
+
+  it('does not let a stale run stand in for the batch that replaced a cancelled one', () => {
+    const ci = ciVerdict([check('verify', 'cancelled', { at: ago(9) }), check('verify', 'ignored', { at: ago(2) })], { ...cfg, requiredChecks: [] });
+    assert.equal(ci.state, 'red');
+    assert.deepEqual(ci.failing, ['verify']);
+  });
+
   it('keeps two workflows with a job of the same name apart', () => {
     const checks = [check('verify', 'success', { at: ago(2) }), check('verify', 'failure', { workflow: 'Lint', at: ago(9) })];
     assert.equal(ciVerdict(checks, cfg).state, 'red');

@@ -100,7 +100,7 @@ var SNAPSHOT_QUERY = `query($owner:String!,$name:String!,$number:Int!){
         ... on LabeledEvent{createdAt label{name}}}}
       comments(last:100){nodes{id body}}
       commits(last:1){nodes{commit{oid statusCheckRollup{contexts(first:100){nodes{__typename
-        ... on CheckRun{name status conclusion startedAt completedAt checkSuite{workflowRun{workflow{name}}}}
+        ... on CheckRun{name status conclusion startedAt completedAt checkSuite{conclusion workflowRun{databaseId workflow{databaseId name}}}}
         ... on StatusContext{context state description createdAt}}}}}}}
     }
   }
@@ -122,7 +122,22 @@ var QUEUE_QUERY = `query($owner:String!,$name:String!,$number:Int!){
 }`;
 var present = (nodes) => nodes.filter((n) => n !== null);
 var NOT_STARTED = "\uFFFF";
-function toCheck(c) {
+var runId = (c) => c.checkSuite?.workflowRun?.databaseId ?? null;
+function supersededRuns(contexts) {
+  const newest = /* @__PURE__ */ new Map();
+  const cancelled = [];
+  for (const c of contexts) {
+    if (c.__typename !== "CheckRun") continue;
+    const wf = c.checkSuite?.workflowRun?.workflow;
+    const workflow = wf ? wf.databaseId != null ? `#${wf.databaseId}` : wf.name : void 0;
+    const id = runId(c);
+    if (!workflow || id === null) continue;
+    newest.set(workflow, Math.max(newest.get(workflow) ?? 0, id));
+    if (c.checkSuite?.conclusion === "CANCELLED") cancelled.push({ workflow, id });
+  }
+  return new Set(cancelled.filter((r) => r.id < (newest.get(r.workflow) ?? 0)).map((r) => r.id));
+}
+function toCheck(c, superseded) {
   if (c.__typename === "StatusContext") {
     const state2 = c.state === "SUCCESS" ? "success" : c.state === "PENDING" || c.state === "EXPECTED" ? "pending" : (
       // A superseded deployment (Railway reaps the first of two deploys of one commit) says nothing about the code.
@@ -130,10 +145,15 @@ function toCheck(c) {
     );
     return { workflow: "", name: c.context, state: state2, at: c.createdAt };
   }
-  const workflow = c.checkSuite?.workflowRun?.workflow?.name ?? "";
-  if (c.status !== "COMPLETED") return { workflow, name: c.name, state: "pending", at: c.startedAt ?? NOT_STARTED };
-  const state = c.conclusion === "SUCCESS" || c.conclusion === "NEUTRAL" || c.conclusion === "SKIPPED" ? "success" : c.conclusion === "STALE" ? "ignored" : "failure";
-  return { workflow, name: c.name, state, at: c.startedAt ?? c.completedAt ?? "" };
+  const wf = c.checkSuite?.workflowRun?.workflow;
+  const workflow = wf?.name ?? "";
+  const of = wf?.databaseId != null ? { workflow, workflowId: wf.databaseId } : { workflow };
+  const at = c.startedAt ?? c.completedAt ?? "";
+  const id = runId(c);
+  if (id !== null && superseded.has(id) && c.checkSuite?.conclusion === "CANCELLED") return { ...of, name: c.name, state: "ignored", at };
+  if (c.status !== "COMPLETED") return { ...of, name: c.name, state: "pending", at: c.startedAt ?? NOT_STARTED };
+  const state = c.conclusion === "SUCCESS" || c.conclusion === "NEUTRAL" || c.conclusion === "SKIPPED" ? "success" : c.conclusion === "STALE" ? "ignored" : c.conclusion === "CANCELLED" ? "cancelled" : "failure";
+  return { ...of, name: c.name, state, at };
 }
 var NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|ignored|timeout)/;
 function toNote(comment) {
@@ -147,6 +167,7 @@ function parseSnapshot(pr) {
   const latest = (times) => times.filter((t) => !!t).sort().at(-1) ?? null;
   const commit = present(pr.commits.nodes)[0]?.commit;
   const contexts = present(commit?.statusCheckRollup?.contexts.nodes ?? []);
+  const superseded = supersededRuns(contexts);
   const gate = contexts.find((c) => c.__typename === "StatusContext" && c.context === CONTEXT);
   const notes = present(pr.comments.nodes).map(toNote).filter((n) => n !== null);
   return {
@@ -163,7 +184,7 @@ function parseSnapshot(pr) {
     ),
     copilotReviews: present(pr.reviews.nodes).filter((r) => r.submittedAt && r.commit).map((r) => ({ commit: r.commit.oid, submittedAt: r.submittedAt, comments: r.comments.totalCount })).sort((a, b) => a.submittedAt.localeCompare(b.submittedAt)),
     unresolvedThreads: present(pr.reviewThreads.nodes).filter((t) => !t.isResolved).length,
-    checks: contexts.map(toCheck),
+    checks: contexts.map((c) => toCheck(c, superseded)),
     gateStatus: gate?.__typename === "StatusContext" ? { state: gate.state.toLowerCase(), description: gate.description ?? "" } : null,
     note: notes.at(-1) ?? null
   };
@@ -229,16 +250,22 @@ var DESCRIPTION_MAX = 140;
 function excluded(c, cfg) {
   return c.workflow === cfg.ownWorkflow || c.workflow === COPILOT_WORKFLOW || c.name === COPILOT_LOGIN || c.name.startsWith(CONTEXT) || cfg.ignoreChecks.includes(c.name);
 }
+var WEIGHT = { success: 2, failure: 2, pending: 2, cancelled: 1, ignored: 0 };
+function speaking(a, b) {
+  if (!a) return b;
+  const weight = WEIGHT[b.state] - WEIGHT[a.state];
+  if (weight !== 0) return weight > 0 ? b : a;
+  return b.at > a.at ? b : a;
+}
 function ciVerdict(checks, cfg) {
   const latest = /* @__PURE__ */ new Map();
   for (const c of checks) {
     if (excluded(c, cfg)) continue;
-    const key = `${c.workflow}\0${c.name}`;
-    const seen = latest.get(key);
-    if (!seen || c.at > seen.at) latest.set(key, c);
+    const key = `${c.workflowId ?? c.workflow}\0${c.name}`;
+    latest.set(key, speaking(latest.get(key), c));
   }
   const kept = [...latest.values()].filter((c) => c.state !== "ignored");
-  const failing = kept.filter((c) => c.state === "failure").map((c) => c.name);
+  const failing = kept.filter((c) => c.state === "failure" || c.state === "cancelled").map((c) => c.name);
   const running = kept.filter((c) => c.state === "pending");
   const pending = running.map((c) => c.name);
   for (const name of cfg.requiredChecks) {
