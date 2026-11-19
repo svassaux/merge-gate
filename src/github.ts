@@ -11,6 +11,30 @@ export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(r
 /** Answers the REST calls may return without it being an error; any other 4xx throws. */
 const TOLERATED = new Set([404, 409, 422]);
 
+/** A REST answer outside TOLERATED, with its status, so a caller can tell a refusal from an outage. */
+export class HttpError extends Error {
+  readonly status: number;
+  /** GitHub's rate limiting (429, or a 403 that says so): it passes, unlike a refusal. */
+  readonly throttled: boolean;
+
+  constructor(status: number, message: string, throttled = false) {
+    super(message);
+    this.status = status;
+    this.throttled = throttled;
+  }
+}
+
+/**
+ * GitHub answers a rate limit with 429, or with 403 carrying `retry-after` (secondary limit) or
+ * `x-ratelimit-remaining: 0` (primary limit), and a message that names the rate limit. Not retried
+ * here: the run fails, and the next one — a push, a CI run, the sweep — asks again.
+ */
+export function isThrottled(status: number, headers: Headers, message: string): boolean {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  return headers.has('retry-after') || headers.get('x-ratelimit-remaining') === '0' || /rate limit/i.test(message);
+}
+
 /** What the gate needs from GitHub — the client below, or a fake in the tests. */
 export interface Api {
   readonly owner: string;
@@ -87,7 +111,7 @@ export class GitHub implements Api {
       }
       if (res.status >= 400 && !TOLERATED.has(res.status)) {
         const message = (data as { message?: string } | null)?.message ?? text.slice(0, 200);
-        throw new Error(`${method} ${path}: ${res.status} ${message}`);
+        throw new HttpError(res.status, `${method} ${path}: ${res.status} ${message}`, isThrottled(res.status, res.headers, message));
       }
       return { status: res.status, data: data as T };
     }

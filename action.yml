@@ -7,6 +7,9 @@ inputs:
   first-review:
     description: "`gate`: the gate asks Copilot for the pull request's one review. `ruleset`: a repository ruleset asks for it; the gate asks itself when no review came after 5 minutes."
     default: gate
+  copilot-effort:
+    description: "Copilot's review effort, named on every request the gate makes: `lite` (GitHub's average, $0.25 a review), `balanced` ($1.50), `max` ($10) or `adaptive`. A request that names none pays the account's default, Balanced since 2026-09-28."
+    default: lite
   required-checks:
     description: Checks that must be present and green on the head, comma-separated — the CI's aggregate job.
     default: ''

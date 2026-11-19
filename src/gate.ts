@@ -1,36 +1,67 @@
-import { sleep, type Api } from './github.ts';
+import { HttpError, sleep, type Api, type Response } from './github.ts';
 import {
   AWAIT_PREFIX,
   CONTEXT,
-  COPILOT_BOT_ID,
   LABEL,
   NOTE_MARK,
   REGISTER_WAIT_S,
   type Config,
   type Quota,
+  type ReviewEffort,
   type Snapshot,
   type Unreviewed,
 } from './model.ts';
 import { readQueue, readQuota, readSnapshot } from './snapshot.ts';
 import { ciVerdict, decide, REASONS, reviewState, wantsRequest, type Plan, type Status } from './verdict.ts';
 
-const REQUEST = `mutation($pr:ID!,$bot:ID!){requestReviews(input:{pullRequestId:$pr,botIds:[$bot],union:true}){clientMutationId}}`;
 const TO_DRAFT = `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){clientMutationId}}`;
 const TO_READY = `mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`;
 const ADD_COMMENT = `mutation($id:ID!,$body:String!){addComment(input:{subjectId:$id,body:$body}){clientMutationId}}`;
 const EDIT_COMMENT = `mutation($id:ID!,$body:String!){updateIssueComment(input:{id:$id,body:$body}){clientMutationId}}`;
 
+interface RequestAnswer {
+  message?: string;
+  failure_reason?: string;
+}
+
+interface Failure {
+  reason: Unreviewed;
+  /** What the run's line says: the status and GitHub's reason, or that the queue never showed it. */
+  detail: string;
+}
+
 /**
- * Ask Copilot, then confirm the request reached its queue. Copilot without credits takes the request
- * and drops it without a trace: no queue entry, no event, no review.
+ * Ask Copilot at `effort`, then confirm the request reached its queue. The effort travels with each
+ * request: one that names none pays the account's default, which GitHub turned to Balanced on
+ * 2026-09-28 (69 of the 73 reviews Copilot left on the gated repositories from 1 to 19 November 2026
+ * say "Review effort: Balanced").
+ * Returns why the request yielded nothing, or `null` once Copilot has it.
  */
-async function requestCopilot(gh: Api, s: Snapshot, waitS: number): Promise<boolean> {
-  await gh.graphql(REQUEST, { pr: s.id, bot: COPILOT_BOT_ID });
+async function requestCopilot(gh: Api, s: Snapshot, effort: ReviewEffort, waitS: number): Promise<Failure | null> {
+  let res: Response<RequestAnswer | null>;
+  try {
+    res = await gh.rest<RequestAnswer | null>('POST', gh.repoPath(`/pulls/${s.number}/copilot-code-review`), { review_effort: effort });
+  } catch (err) {
+    // A client error (no credits, ineligible repository or actor) is GitHub's refusal: the pull
+    // request opens unreviewed. An outage or a rate limit throws on, and the next run asks again.
+    if (err instanceof HttpError && err.status < 500 && !err.throttled) return { reason: 'refused', detail: `refusée, ${err.status}` };
+    throw err;
+  }
+  if (res.status === 422 && res.data?.failure_reason === 'INVALID_REVIEW_EFFORT') {
+    throw new Error(`copilot-effort « ${effort} » refusé par GitHub : ${res.data.message ?? ''}`);
+  }
+  // 201 accepted, 409 a request already pending — which stands for the gate's own only if Copilot's
+  // queue shows it: a stale one would otherwise keep the pull request waiting with no timeout.
+  if (res.status !== 201 && res.status !== 409) {
+    return { reason: 'refused', detail: `refusée, ${res.status}${res.data?.failure_reason ? ` ${res.data.failure_reason}` : ''}` };
+  }
+  // It still has to show up in the queue: Copilot without credits used to take a request and drop
+  // it without a trace — no queue entry, no event, no review.
   const deadline = Date.now() + waitS * 1_000;
   for (;;) {
     const q = await readQueue(gh, s.number);
-    if (q.queued || q.reviews > s.copilotReviews.length) return true;
-    if (Date.now() >= deadline) return false;
+    if (q.queued || q.reviews > s.copilotReviews.length) return null;
+    if (Date.now() >= deadline) return { reason: 'ignored', detail: res.status === 409 ? 'en attente hors file' : 'ignorée' };
     await sleep(4_000);
   }
 }
@@ -102,9 +133,9 @@ export async function gatePullRequest(gh: Api, number: number, cfg: Config, runU
   let plan = decide(s, ci, review, quota);
   let requested = '';
   if (plan.request) {
-    const registered = await requestCopilot(gh, s, opts.registerWaitS ?? REGISTER_WAIT_S);
-    requested = registered ? ' · Copilot demandé' : ' · demande ignorée';
-    if (!registered) plan = decide(s, ci, { kind: 'unreviewed', reason: 'ignored' }, quota);
+    const failure = await requestCopilot(gh, s, cfg.copilotEffort, opts.registerWaitS ?? REGISTER_WAIT_S);
+    requested = failure === null ? ` · Copilot demandé (${cfg.copilotEffort})` : ` · demande ${failure.detail}`;
+    if (failure !== null) plan = decide(s, ci, { kind: 'unreviewed', reason: failure.reason }, quota);
   }
   await apply(gh, s, plan, quota, runUrl);
   const facts = `CI ${ci.state} · ${s.unresolvedThreads} fil(s) · revue ${review.kind}${quota ? ` · quota ${quota.remaining ?? '?'}${quota.overageRemaining === null ? '' : ` (overage ${quota.overageRemaining})`}` : ''}`;

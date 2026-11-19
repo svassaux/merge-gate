@@ -6,6 +6,21 @@ var ATTEMPTS = 3;
 var TIMEOUT_MS = 15e3;
 var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 var TOLERATED = /* @__PURE__ */ new Set([404, 409, 422]);
+var HttpError = class extends Error {
+  status;
+  /** GitHub's rate limiting (429, or a 403 that says so): it passes, unlike a refusal. */
+  throttled;
+  constructor(status, message, throttled = false) {
+    super(message);
+    this.status = status;
+    this.throttled = throttled;
+  }
+};
+function isThrottled(status, headers, message) {
+  if (status === 429) return true;
+  if (status !== 403) return false;
+  return headers.has("retry-after") || headers.get("x-ratelimit-remaining") === "0" || /rate limit/i.test(message);
+}
 var GitHub = class {
   owner;
   repo;
@@ -67,7 +82,7 @@ var GitHub = class {
       }
       if (res.status >= 400 && !TOLERATED.has(res.status)) {
         const message = data?.message ?? text.slice(0, 200);
-        throw new Error(`${method} ${path}: ${res.status} ${message}`);
+        throw new HttpError(res.status, `${method} ${path}: ${res.status} ${message}`, isThrottled(res.status, res.headers, message));
       }
       return { status: res.status, data };
     }
@@ -78,7 +93,7 @@ var GitHub = class {
 var LABEL = "merge-gate";
 var CONTEXT = "merge-gate";
 var COPILOT_LOGIN = "copilot-pull-request-reviewer";
-var COPILOT_BOT_ID = "BOT_kgDOCnlnWA";
+var REVIEW_EFFORTS = ["lite", "balanced", "max", "adaptive"];
 var COPILOT_WORKFLOW = "Copilot";
 var NOTE_MARK = "<!-- merge-gate:unreviewed";
 var AWAIT_PREFIX = "MERGE_GATE_AWAIT_";
@@ -155,7 +170,7 @@ function toCheck(c, superseded) {
   const state = c.conclusion === "SUCCESS" || c.conclusion === "NEUTRAL" || c.conclusion === "SKIPPED" ? "success" : c.conclusion === "STALE" ? "ignored" : c.conclusion === "CANCELLED" ? "cancelled" : "failure";
   return { ...of, name: c.name, state, at };
 }
-var NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|ignored|timeout)/;
+var NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|refused|ignored|timeout)/;
 function toNote(comment) {
   if (!comment.body.startsWith(NOTE_MARK)) return null;
   const m = NOTE_FIELDS.exec(comment.body);
@@ -243,6 +258,7 @@ async function readQuota(gh) {
 // src/verdict.ts
 var REASONS = {
   quota: "cr\xE9dits Copilot \xE9puis\xE9s",
+  refused: "demande refus\xE9e par GitHub (cr\xE9dits, d\xE9p\xF4t ou compte non \xE9ligible)",
   ignored: "demande ignor\xE9e par Copilot (quota ou panne)",
   timeout: `Copilot n\u2019a pas rendu sa revue en ${COPILOT_TIMEOUT_MIN} min`
 };
@@ -361,18 +377,29 @@ function decide(s, ci, review, quota) {
 }
 
 // src/gate.ts
-var REQUEST = `mutation($pr:ID!,$bot:ID!){requestReviews(input:{pullRequestId:$pr,botIds:[$bot],union:true}){clientMutationId}}`;
 var TO_DRAFT = `mutation($id:ID!){convertPullRequestToDraft(input:{pullRequestId:$id}){clientMutationId}}`;
 var TO_READY = `mutation($id:ID!){markPullRequestReadyForReview(input:{pullRequestId:$id}){clientMutationId}}`;
 var ADD_COMMENT = `mutation($id:ID!,$body:String!){addComment(input:{subjectId:$id,body:$body}){clientMutationId}}`;
 var EDIT_COMMENT = `mutation($id:ID!,$body:String!){updateIssueComment(input:{id:$id,body:$body}){clientMutationId}}`;
-async function requestCopilot(gh, s, waitS) {
-  await gh.graphql(REQUEST, { pr: s.id, bot: COPILOT_BOT_ID });
+async function requestCopilot(gh, s, effort, waitS) {
+  let res;
+  try {
+    res = await gh.rest("POST", gh.repoPath(`/pulls/${s.number}/copilot-code-review`), { review_effort: effort });
+  } catch (err) {
+    if (err instanceof HttpError && err.status < 500 && !err.throttled) return { reason: "refused", detail: `refus\xE9e, ${err.status}` };
+    throw err;
+  }
+  if (res.status === 422 && res.data?.failure_reason === "INVALID_REVIEW_EFFORT") {
+    throw new Error(`copilot-effort \xAB ${effort} \xBB refus\xE9 par GitHub : ${res.data.message ?? ""}`);
+  }
+  if (res.status !== 201 && res.status !== 409) {
+    return { reason: "refused", detail: `refus\xE9e, ${res.status}${res.data?.failure_reason ? ` ${res.data.failure_reason}` : ""}` };
+  }
   const deadline = Date.now() + waitS * 1e3;
   for (; ; ) {
     const q = await readQueue(gh, s.number);
-    if (q.queued || q.reviews > s.copilotReviews.length) return true;
-    if (Date.now() >= deadline) return false;
+    if (q.queued || q.reviews > s.copilotReviews.length) return null;
+    if (Date.now() >= deadline) return { reason: "ignored", detail: res.status === 409 ? "en attente hors file" : "ignor\xE9e" };
     await sleep(4e3);
   }
 }
@@ -430,9 +457,9 @@ async function gatePullRequest(gh, number, cfg, runUrl, opts = {}) {
   let plan = decide(s, ci, review, quota);
   let requested = "";
   if (plan.request) {
-    const registered = await requestCopilot(gh, s, opts.registerWaitS ?? REGISTER_WAIT_S);
-    requested = registered ? " \xB7 Copilot demand\xE9" : " \xB7 demande ignor\xE9e";
-    if (!registered) plan = decide(s, ci, { kind: "unreviewed", reason: "ignored" }, quota);
+    const failure = await requestCopilot(gh, s, cfg.copilotEffort, opts.registerWaitS ?? REGISTER_WAIT_S);
+    requested = failure === null ? ` \xB7 Copilot demand\xE9 (${cfg.copilotEffort})` : ` \xB7 demande ${failure.detail}`;
+    if (failure !== null) plan = decide(s, ci, { kind: "unreviewed", reason: failure.reason }, quota);
   }
   await apply(gh, s, plan, quota, runUrl);
   const facts = `CI ${ci.state} \xB7 ${s.unresolvedThreads} fil(s) \xB7 revue ${review.kind}${quota ? ` \xB7 quota ${quota.remaining ?? "?"}${quota.overageRemaining === null ? "" : ` (overage ${quota.overageRemaining})`}` : ""}`;
@@ -470,6 +497,7 @@ async function targets(gh, eventName, event) {
 // src/main.ts
 var input = (name) => (process.env[`INPUT_${name.toUpperCase()}`] ?? "").trim();
 var list = (value) => value.split(/[\s,]+/).filter(Boolean);
+var isEffort = (value) => REVIEW_EFFORTS.includes(value);
 async function main() {
   const token = input("token");
   if (!token) {
@@ -478,8 +506,12 @@ async function main() {
   }
   const firstReview = input("first-review") || "gate";
   if (firstReview !== "gate" && firstReview !== "ruleset") throw new Error(`first-review: \xAB ${firstReview} \xBB \u2014 gate ou ruleset`);
+  const effort = input("copilot-effort").toLowerCase() || "lite";
+  if (!isEffort(effort)) throw new Error(`copilot-effort: \xAB ${effort} \xBB \u2014 ${REVIEW_EFFORTS.join(", ")}`);
+  const copilotEffort = effort;
   const cfg = {
     firstReview,
+    copilotEffort,
     requiredChecks: list(input("required-checks")),
     ignoreChecks: list(input("ignore-checks")),
     ownWorkflow: process.env["GITHUB_WORKFLOW"] ?? ""
