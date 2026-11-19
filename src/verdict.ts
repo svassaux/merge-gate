@@ -53,6 +53,7 @@ export interface Plan {
 
 export const REASONS: Record<Unreviewed, string> = {
   quota: 'crédits Copilot épuisés',
+  refused: 'demande refusée par GitHub (crédits, dépôt ou compte non éligible)',
   ignored: 'demande ignorée par Copilot (quota ou panne)',
   timeout: `Copilot n’a pas rendu sa revue en ${COPILOT_TIMEOUT_MIN} min`,
 };

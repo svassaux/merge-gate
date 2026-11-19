@@ -20,6 +20,10 @@ on:
         description: "`gate`: the gate asks Copilot for the pull request's one review. `ruleset`: a repository ruleset asks for it; the gate asks itself when no review came after 5 minutes."
         type: string
         default: gate
+      copilot-effort:
+        description: "Copilot's review effort, named on every request the gate makes: `lite`, `balanced`, `max` or `adaptive`."
+        type: string
+        default: lite
       local:
         description: Run the action from the caller's checkout instead of the release (this repository's own pull requests).
         type: boolean
@@ -60,6 +64,7 @@ jobs:
         with:
           token: ${{ secrets.GATE_TOKEN }}
           first-review: ${{ inputs.first-review }}
+          copilot-effort: ${{ inputs.copilot-effort }}
           required-checks: ${{ inputs.required-checks }}
           ignore-checks: ${{ inputs.ignore-checks }}
       - if: ${{ inputs.local }}
@@ -69,5 +74,6 @@ jobs:
         with:
           token: ${{ secrets.GATE_TOKEN }}
           first-review: ${{ inputs.first-review }}
+          copilot-effort: ${{ inputs.copilot-effort }}
           required-checks: ${{ inputs.required-checks }}
           ignore-checks: ${{ inputs.ignore-checks }}

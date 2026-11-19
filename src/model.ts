@@ -4,8 +4,13 @@ export const LABEL = 'merge-gate';
 export const CONTEXT = 'merge-gate';
 
 export const COPILOT_LOGIN = 'copilot-pull-request-reviewer';
-/** Node id of the Copilot reviewer bot — the same on every repository. */
-export const COPILOT_BOT_ID = 'BOT_kgDOCnlnWA';
+/**
+ * The review efforts the request endpoint offers, as it spells them: its 422 for an unknown one listed
+ * `adaptive, lite, balanced, max` on 2026-11-19. GitHub's own averages: $0.25 a review with Lite, $1.50
+ * with Balanced, $10 with Max.
+ */
+export const REVIEW_EFFORTS = ['lite', 'balanced', 'max', 'adaptive'] as const;
+export type ReviewEffort = (typeof REVIEW_EFFORTS)[number];
 /** Each Copilot review runs as an Actions run of this dynamic workflow. */
 export const COPILOT_WORKFLOW = 'Copilot';
 
@@ -46,7 +51,7 @@ export interface CopilotReview {
   comments: number;
 }
 
-export type Unreviewed = 'quota' | 'ignored' | 'timeout';
+export type Unreviewed = 'quota' | 'refused' | 'ignored' | 'timeout';
 
 export interface Note {
   id: string;
@@ -75,6 +80,8 @@ export interface Snapshot {
 
 export interface Config {
   firstReview: 'gate' | 'ruleset';
+  /** Named on every request the gate makes: a request that names none pays the account's default. */
+  copilotEffort: ReviewEffort;
   requiredChecks: readonly string[];
   ignoreChecks: readonly string[];
   /** Name of the workflow running the gate, whose own checks never count. */

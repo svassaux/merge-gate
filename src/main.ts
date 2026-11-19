@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { gatePullRequest } from './gate.ts';
 import { GitHub } from './github.ts';
-import type { Config } from './model.ts';
+import { REVIEW_EFFORTS, type Config, type ReviewEffort } from './model.ts';
 import { targets, type Event } from './targets.ts';
 
 const input = (name: string) => (process.env[`INPUT_${name.toUpperCase()}`] ?? '').trim();
 const list = (value: string) => value.split(/[\s,]+/).filter(Boolean);
+const isEffort = (value: string): value is ReviewEffort => (REVIEW_EFFORTS as readonly string[]).includes(value);
 
 async function main(): Promise<void> {
   const token = input('token');
@@ -15,8 +16,12 @@ async function main(): Promise<void> {
   }
   const firstReview = input('first-review') || 'gate';
   if (firstReview !== 'gate' && firstReview !== 'ruleset') throw new Error(`first-review: « ${firstReview} » — gate ou ruleset`);
+  const effort = input('copilot-effort').toLowerCase() || 'lite';
+  if (!isEffort(effort)) throw new Error(`copilot-effort: « ${effort} » — ${REVIEW_EFFORTS.join(', ')}`);
+  const copilotEffort = effort;
   const cfg: Config = {
     firstReview,
+    copilotEffort,
     requiredChecks: list(input('required-checks')),
     ignoreChecks: list(input('ignore-checks')),
     ownWorkflow: process.env['GITHUB_WORKFLOW'] ?? '',

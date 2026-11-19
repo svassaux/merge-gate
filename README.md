@@ -25,8 +25,19 @@ repository cannot call a workflow of another owner's private repository, hence p
    - while the CI is red;
    - on a work draft.
 
-   With `first-review: ruleset`, a repository ruleset asks for that review. The gate gives it
-   5 minutes, then asks itself.
+   Each request names its effort, `copilot-effort`, `lite` by default: GitHub's averages are $0.25 a
+   review with Lite and $1.50 with Balanced, and a request that names none pays the account's default,
+   Balanced since 2026-09-28. From 1 to 19 November 2026, 69 of the 73 reviews on the gated
+   repositories ran at Balanced, and the account's credits came to about 260 a review.
+
+   With `first-review: ruleset`, a repository ruleset asks for that review, at the effort the
+   repository's settings name. The gate gives it 5 minutes, then asks itself.
+
+   GitHub may also ask before the gate does. When the account's automatic review is on (Copilot
+   settings → Code review), GitHub requests a review when a pull request leaves draft, at the
+   account's effort. The gate then finds Copilot queued, waits for that review and asks nothing. Only
+   that setting decides what this review costs. On #6, on 2026-11-19, the request came 2 s after the
+   hand-over and the review said "Review effort: Balanced".
 4. **Opening.** When the CI is green, no thread is open and the review is in, the gate:
    - marks the pull request ready;
    - takes the label off;
@@ -41,8 +52,9 @@ repository cannot call a workflow of another owner's private repository, hence p
      An answer that permits an overage without sizing it counts as room, because an unknown quota
      never stops a request: if
      Copilot has nothing left, the request is dropped instead, which the next point covers.
-   - A request that does not reach Copilot's queue within 20 s was dropped. Copilot without credits
-     drops a request silently.
+   - A request GitHub refuses (a client error: no credits, ineligible repository or account) yields no
+     review; an outage fails the run, and the next one asks again. A request it accepts, or one
+     already pending, must show up in Copilot's queue within 20 s, or it was dropped.
    - A review still queued after 20 minutes will not come.
 
    In all three cases the pull request opens without the review. One comment on the pull request

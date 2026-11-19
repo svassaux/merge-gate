@@ -159,7 +159,7 @@ function toCheck(c: Context, superseded: ReadonlySet<number>): Check {
   return { ...of, name: c.name, state, at };
 }
 
-const NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|ignored|timeout)/;
+const NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|refused|ignored|timeout)/;
 
 function toNote(comment: { id: string; body: string }): Note | null {
   if (!comment.body.startsWith(NOTE_MARK)) return null;
