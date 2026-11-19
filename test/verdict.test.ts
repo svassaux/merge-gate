@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import type { Config, Quota, Snapshot } from '../src/model.ts';
-import { ciVerdict, decide, reviewState } from '../src/verdict.ts';
+import { ciVerdict, decide, reviewState, wantsLovable } from '../src/verdict.ts';
 import { ago, cfg, check, GREEN, HEAD, held, NOW, OLD, reviewed, snap } from './helpers.ts';
 
-const QUOTA_OK: Quota = { exhausted: false, remaining: 1600, overageRemaining: null, resetAt: '2026-11-01T00:00:00.000Z' };
-const QUOTA_OUT: Quota = { exhausted: true, remaining: 0, overageRemaining: 0, resetAt: '2026-11-01T00:00:00.000Z' };
+const QUOTA_OK: Quota = { exhausted: false, overage: false, remaining: 1600, overageRemaining: null, resetAt: '2026-11-01T00:00:00.000Z' };
+const QUOTA_OUT: Quota = { exhausted: true, overage: false, remaining: 0, overageRemaining: 0, resetAt: '2026-11-01T00:00:00.000Z' };
 
-function run(s: Snapshot, quota: Quota | null = QUOTA_OK, c: Config = cfg) {
-  return decide(s, ciVerdict(s.checks, c), reviewState(s, c, NOW), quota);
+/** Past the included entitlement, with the paid overage running — as GitHub answered on 2026-11-19. */
+const QUOTA_OVERAGE: Quota = { exhausted: false, overage: true, remaining: -2092, overageRemaining: 5909, resetAt: '2026-12-01T00:00:00.000Z' };
+
+function run(s: Snapshot, quota: Quota | null = QUOTA_OK, c: Config = cfg, lovable = false) {
+  return decide(s, ciVerdict(s.checks, c), reviewState(s, c, NOW), quota, lovable);
 }
 
 describe('CI verdict', () => {
@@ -129,6 +132,7 @@ describe('Copilot review', () => {
     assert.deepEqual(reviewState(snap({ copilotQueued: true, copilotRequestedAt: ago(20) }), cfg, NOW), {
       kind: 'unreviewed',
       reason: 'timeout',
+      lovable: null,
     });
   });
 
@@ -147,12 +151,12 @@ describe('Copilot review', () => {
   });
 
   it('takes the recorded verdict for this head instead of asking again', () => {
-    const s = snap({ note: { id: 'IC_1', head: HEAD, reason: 'ignored' } });
-    assert.deepEqual(reviewState(s, cfg, NOW), { kind: 'unreviewed', reason: 'ignored' });
+    const s = snap({ note: { id: 'IC_1', head: HEAD, reason: 'ignored', lovable: null } });
+    assert.deepEqual(reviewState(s, cfg, NOW), { kind: 'unreviewed', reason: 'ignored', lovable: null });
   });
 
   it('asks again on a new head after a recorded verdict', () => {
-    assert.equal(reviewState(snap({ note: { id: 'IC_1', head: OLD, reason: 'quota' } }), cfg, NOW).kind, 'due');
+    assert.equal(reviewState(snap({ note: { id: 'IC_1', head: OLD, reason: 'quota', lovable: null } }), cfg, NOW).kind, 'due');
   });
 
   describe('with first-review: ruleset', () => {
@@ -260,30 +264,30 @@ describe('decision', () => {
     const plan = run(held(), QUOTA_OUT);
     assert.equal(plan.request, false);
     assert.equal(plan.kind, 'open');
-    assert.equal(plan.note, 'quota');
+    assert.equal(plan.note?.reason, 'quota');
     assert.equal(plan.status?.state, 'success');
     assert.match(plan.status?.description ?? '', /NON relue par Copilot : crédits Copilot épuisés/);
   });
 
   it('records the exhausted credits at once, while it still waits for the CI', () => {
     const plan = run(held({ checks: [check('verify', 'pending')] }), QUOTA_OUT);
-    assert.deepEqual([plan.kind, plan.note, plan.request, plan.awaiting], ['hold', 'quota', false, false]);
+    assert.deepEqual([plan.kind, plan.note?.reason, plan.request, plan.awaiting], ['hold', 'quota', false, false]);
     assert.match(plan.status?.description ?? '', /sans revue Copilot \(crédits Copilot épuisés\)/);
   });
 
   it('opens after a review queued for 20 minutes, and records it', () => {
     const plan = run(held({ copilotQueued: true, copilotRequestedAt: ago(25) }));
-    assert.deepEqual([plan.kind, plan.note], ['open', 'timeout']);
+    assert.deepEqual([plan.kind, plan.note?.reason], ['open', 'timeout']);
   });
 
   it('opens on an ignored request', () => {
     const s = held();
-    const plan = decide(s, ciVerdict(s.checks, cfg), { kind: 'unreviewed', reason: 'ignored' }, QUOTA_OK);
-    assert.deepEqual([plan.kind, plan.note, plan.request], ['open', 'ignored', false]);
+    const plan = decide(s, ciVerdict(s.checks, cfg), { kind: 'unreviewed', reason: 'ignored', lovable: null }, QUOTA_OK);
+    assert.deepEqual([plan.kind, plan.note?.reason, plan.request], ['open', 'ignored', false]);
   });
 
   it('does not record the same verdict twice on one head', () => {
-    const plan = run(held({ note: { id: 'IC_1', head: HEAD, reason: 'quota' } }), QUOTA_OUT);
+    const plan = run(held({ note: { id: 'IC_1', head: HEAD, reason: 'quota', lovable: null } }), QUOTA_OUT);
     assert.equal(plan.kind, 'open');
     assert.equal(plan.note, null);
   });
@@ -298,5 +302,53 @@ describe('decision', () => {
     const plan = run(held({ checks: many, unresolvedThreads: 3 }));
     assert.ok((plan.status?.description.length ?? 0) <= 140);
     assert.ok((plan.status?.description.length ?? 0) > 100);
+  });
+});
+
+describe('the Lovable relay in Copilot’s place', () => {
+  it('reviews instead of Copilot’s paid overage, holding the pull request meanwhile', () => {
+    const s = held();
+    const plan = run(s, QUOTA_OVERAGE, cfg, true);
+    assert.deepEqual([plan.kind, plan.request, plan.review.kind, plan.note, plan.awaiting], ['hold', false, 'lovable', null, true]);
+    assert.equal(plan.status?.description, 'Gardée en brouillon — Lovable relit (crédits Copilot inclus épuisés, dépassement payant évité)');
+    assert.ok(wantsLovable(s, ciVerdict(s.checks, cfg), plan));
+  });
+
+  it('without the relay, still asks Copilot past the included entitlement', () => {
+    assert.equal(run(held(), QUOTA_OVERAGE).request, true);
+  });
+
+  it('reviews when Copilot has nothing left at all, too', () => {
+    const plan = run(held(), QUOTA_OUT, cfg, true);
+    assert.deepEqual([plan.review.kind, plan.review.kind === 'lovable' && plan.review.reason], ['lovable', 'quota']);
+  });
+
+  it('waits for a red CI or an open thread to be dealt with before spending a review on the head', () => {
+    // As for Copilot: the head the author fixes is the one reviewed.
+    for (const s of [held({ checks: [check('verify', 'failure')] }), held({ unresolvedThreads: 1 })]) {
+      const plan = run(s, QUOTA_OVERAGE, cfg, true);
+      assert.doesNotMatch(plan.status?.description ?? '', /Lovable relit/);
+      assert.equal(plan.awaiting, false);
+      assert.equal(wantsLovable(s, ciVerdict(s.checks, cfg), plan), false);
+    }
+    // A head Copilot already failed to review, with the author still to act: the relay's turn comes after.
+    const noted = held({ unresolvedThreads: 1, note: { id: 'IC_1', head: HEAD, reason: 'ignored', lovable: null } });
+    const plan = run(noted, QUOTA_OVERAGE, cfg, true);
+    assert.match(plan.status?.description ?? '', /relecture Lovable à venir \(demande ignorée/);
+    assert.equal(wantsLovable(noted, ciVerdict(noted.checks, cfg), plan), false);
+  });
+
+  it('opens unreviewed when the relay failed on this head, naming both reasons', () => {
+    const s = held({ note: { id: 'IC_1', head: HEAD, reason: 'overage', lovable: 'credits' } });
+    const plan = run(s, QUOTA_OVERAGE, cfg, true);
+    assert.equal(plan.kind, 'open');
+    assert.equal(plan.note, null, 'the note already says so');
+    assert.match(plan.status?.description ?? '', /NON relue par Copilot : .* · ni par Lovable : crédits Lovable épuisés/);
+  });
+
+  it('counts the relay’s review as the pull request’s one review', () => {
+    const s = held({ lovableReview: { commit: OLD, submittedAt: ago(30) } });
+    assert.deepEqual(reviewState(s, cfg, NOW), { kind: 'done', by: 'lovable' });
+    assert.equal(run(s, QUOTA_OVERAGE, cfg, true).status?.description, 'Prête — CI verte, relue par Lovable à la place de Copilot, aucun fil ouvert');
   });
 });

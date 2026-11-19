@@ -82,7 +82,7 @@ describe('the gate’s own marks', () => {
       description: 'Copilot relit',
       createdAt: '2026-10-02T10:00:00Z',
     });
-    assert.deepEqual(parseSnapshot(raw).gateStatus, { state: 'pending', description: 'Copilot relit' });
+    assert.deepEqual(parseSnapshot(raw).gateStatus, { state: 'pending', description: 'Copilot relit', at: '2026-10-02T10:00:00Z' });
   });
 
   it('reads its note, and only a note it wrote', () => {
@@ -91,7 +91,36 @@ describe('the gate’s own marks', () => {
       { id: 'IC_b', body: `<!-- merge-gate:unreviewed head=${head} reason=timeout -->\n**Pas de revue**` },
       { id: 'IC_a', body: `Quoting <!-- merge-gate:unreviewed head=${head} reason=quota --> is not a note` },
     );
-    assert.deepEqual(parseSnapshot(raw).note, { id: 'IC_b', head, reason: 'timeout' });
+    assert.deepEqual(parseSnapshot(raw).note, { id: 'IC_b', head, reason: 'timeout', lovable: null });
+  });
+
+  it('reads the Lovable review it posted, and only one it posted — never Copilot’s, nor a stranger’s', () => {
+    // The pull request's real COMMENTED reviews, read live on 2026-11-19: Copilot's overview and a reply.
+    const copilot = JSON.parse(readFileSync(new URL('./fixtures/garmlink-77-gate-reviews.json', import.meta.url), 'utf8')) as RawPullRequest['gateReviews'];
+    const raw = structuredClone(base);
+    raw.gateReviews = copilot;
+    assert.equal(parseSnapshot(raw, 'svassaux').lovableReview, null);
+    const mark = `<!-- merge-gate:lovable-review head=${head} -->\n### Relecture Lovable`;
+    raw.gateReviews = {
+      nodes: [
+        ...(copilot?.nodes ?? []),
+        { author: { login: 'svassaux' }, body: `Quoting <!-- merge-gate:lovable-review head=${head} --> is not a review`, submittedAt: '2026-11-19T10:00:00Z', commit: { oid: head } },
+        // On a public repository anyone may post a review that starts with the mark.
+        { author: { login: 'mallory' }, body: mark, submittedAt: '2026-11-19T10:30:00Z', commit: { oid: head } },
+        { author: { login: 'svassaux' }, body: mark, submittedAt: '2026-11-19T11:00:00Z', commit: { oid: head } },
+      ],
+    };
+    assert.deepEqual(parseSnapshot(raw, 'svassaux').lovableReview, { commit: head, submittedAt: '2026-11-19T11:00:00Z' });
+    assert.equal(parseSnapshot(raw).lovableReview, null, 'the token’s owner unknown: no review counts');
+  });
+
+  it('finds the Lovable review among the last reviews when a hundred came before it', () => {
+    const raw = structuredClone(base);
+    const reply = (i: number) => ({ author: { login: 'svassaux' }, body: `Fixed (${i}).`, submittedAt: '2026-11-19T09:00:00Z', commit: { oid: head } });
+    raw.gateReviews = { nodes: Array.from({ length: 100 }, (_, i) => reply(i)) };
+    const mark = `<!-- merge-gate:lovable-review head=${head} -->\n### Relecture Lovable`;
+    raw.lateGateReviews = { nodes: [{ author: { login: 'svassaux' }, body: mark, submittedAt: '2026-11-19T11:00:00Z', commit: { oid: head } }, reply(100)] };
+    assert.deepEqual(parseSnapshot(raw, 'svassaux').lovableReview, { commit: head, submittedAt: '2026-11-19T11:00:00Z' });
   });
 
   it('knows when its label was put on', () => {
@@ -339,6 +368,7 @@ describe('the Copilot quota', () => {
   it('has credits left', () => {
     assert.deepEqual(parseQuota(reading({ has_quota: true, remaining: 1656, percent_remaining: 23.6, overage_permitted: true })), {
       exhausted: false,
+      overage: false,
       remaining: 1656,
       overageRemaining: null,
       resetAt: '2026-11-01T00:00:00.000Z',
@@ -373,7 +403,7 @@ describe('the Copilot quota', () => {
           unlimited: false,
         }),
       ),
-      { exhausted: false, remaining: -422, overageRemaining: 3579, resetAt: '2026-11-01T00:00:00.000Z' },
+      { exhausted: false, overage: true, remaining: -422, overageRemaining: 3579, resetAt: '2026-11-01T00:00:00.000Z' },
     );
   });
 

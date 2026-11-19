@@ -28,12 +28,19 @@ on:
         description: Run the action from the caller's checkout instead of the release (this repository's own pull requests).
         type: boolean
         default: false
-    # Declared, so a caller hands over this one secret instead of `secrets: inherit`: on
-    # `pull_request_target` the caller runs with the default branch's privileges, and the job needs nothing else.
+    # Declared, so a caller hands over these secrets by name instead of `secrets: inherit`: on
+    # `pull_request_target` the caller runs with the default branch's privileges, and the job needs no other.
     secrets:
       GATE_TOKEN:
         description: A token of the repository owner, whose Copilot credits pay for the reviews (README, Install).
         required: true
+      # Both or neither. Handed over, they let the Lovable relay review whatever head Copilot cannot.
+      LOVABLE_RELAY_URL:
+        description: The Lovable relay's address (README, The Lovable review). Never set on a repository that holds customers' data.
+        required: false
+      LOVABLE_RELAY_TOKEN:
+        description: The relay's token for this caller.
+        required: false
 
 jobs:
   gate:
@@ -57,12 +64,16 @@ jobs:
       || github.event_name == 'workflow_dispatch'
       || (github.event_name == 'schedule' && contains(toJSON(vars), 'MERGE_GATE_AWAIT_'))
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    # A run ends in seconds, save the one that has the Lovable relay review a pull request — one a run at
+    # most: it stops starting calls after 12 minutes, and gives a call up after 135 s (the relay's host cuts at ~126 s).
+    timeout-minutes: 20
     steps:
       - if: ${{ !inputs.local }}
         uses: svassaux/merge-gate@v1
         with:
           token: ${{ secrets.GATE_TOKEN }}
+          lovable-relay-url: ${{ secrets.LOVABLE_RELAY_URL }}
+          lovable-relay-token: ${{ secrets.LOVABLE_RELAY_TOKEN }}
           first-review: ${{ inputs.first-review }}
           copilot-effort: ${{ inputs.copilot-effort }}
           required-checks: ${{ inputs.required-checks }}
@@ -73,6 +84,8 @@ jobs:
         uses: ./
         with:
           token: ${{ secrets.GATE_TOKEN }}
+          lovable-relay-url: ${{ secrets.LOVABLE_RELAY_URL }}
+          lovable-relay-token: ${{ secrets.LOVABLE_RELAY_TOKEN }}
           first-review: ${{ inputs.first-review }}
           copilot-effort: ${{ inputs.copilot-effort }}
           required-checks: ${{ inputs.required-checks }}

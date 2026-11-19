@@ -16,6 +16,8 @@ export const COPILOT_WORKFLOW = 'Copilot';
 
 /** Marks the comment that records a head going without a Copilot review. */
 export const NOTE_MARK = '<!-- merge-gate:unreviewed';
+/** Opens the body of the review the gate had the Lovable relay write: a pull request has at most one. */
+export const LOVABLE_MARK = '<!-- merge-gate:lovable-review';
 /** One repository variable per pull request waiting on Copilot; the scheduled sweep runs only while one exists. */
 export const AWAIT_PREFIX = 'MERGE_GATE_AWAIT_';
 
@@ -51,12 +53,21 @@ export interface CopilotReview {
   comments: number;
 }
 
-export type Unreviewed = 'quota' | 'refused' | 'ignored' | 'timeout';
+/**
+ * Why Copilot does not review this head. `overage`: its included entitlement is spent and what remains is
+ * the paid overage, which the gate leaves alone where the Lovable relay can review instead.
+ */
+export type Unreviewed = 'quota' | 'overage' | 'refused' | 'ignored' | 'timeout';
+
+/** Why the Lovable relay gave no review either: no credit left (402), token refused, or no answer at all. */
+export type LovableFailure = 'credits' | 'token' | 'unavailable';
 
 export interface Note {
   id: string;
   head: string;
   reason: Unreviewed;
+  /** Set once the relay failed on this head: the gate opens the pull request without asking it again. */
+  lovable: LovableFailure | null;
 }
 
 export interface Snapshot {
@@ -72,9 +83,12 @@ export interface Snapshot {
   copilotRequestedAt: string | null;
   /** Oldest first. */
   copilotReviews: CopilotReview[];
+  /** The review the gate had the Lovable relay write, standing for Copilot's one review. */
+  lovableReview: { commit: string; submittedAt: string } | null;
   unresolvedThreads: number;
   checks: Check[];
-  gateStatus: { state: string; description: string } | null;
+  /** The gate's own status on the head, with when it was written: GitHub keeps the last one. */
+  gateStatus: { state: string; description: string; at: string | null } | null;
   note: Note | null;
 }
 
@@ -86,10 +100,17 @@ export interface Config {
   ignoreChecks: readonly string[];
   /** Name of the workflow running the gate, whose own checks never count. */
   ownWorkflow: string;
+  /** The Lovable relay is configured: it reviews when Copilot cannot, and Copilot's paid overage is left alone. */
+  lovable: boolean;
 }
 
 export interface Quota {
   exhausted: boolean;
+  /**
+   * The included entitlement is spent and only the paid overage is left: Copilot still answers, and each
+   * review is billed. False when `exhausted`.
+   */
+  overage: boolean;
   /** Of the included entitlement. Negative past it, which is not the same as out of credits. */
   remaining: number | null;
   /**

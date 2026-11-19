@@ -3,8 +3,10 @@ import {
   CONTEXT,
   COPILOT_LOGIN,
   LABEL,
+  LOVABLE_MARK,
   NOTE_MARK,
   type Check,
+  type LovableFailure,
   type Note,
   type Quota,
   type Snapshot,
@@ -13,12 +15,15 @@ import {
 
 /** Everything the gate decides on, in one read. */
 export const SNAPSHOT_QUERY = `query($owner:String!,$name:String!,$number:Int!){
+  viewer{login}
   repository(owner:$owner,name:$name){
     pullRequest(number:$number){
       id number state isDraft headRefOid
       labels(first:50){nodes{name}}
       reviewRequests(first:30){nodes{requestedReviewer{__typename ... on Bot{login}}}}
       reviews(last:50,author:"${COPILOT_LOGIN}[bot]",states:[COMMENTED,APPROVED,CHANGES_REQUESTED]){nodes{submittedAt commit{oid} comments{totalCount}}}
+      gateReviews:reviews(first:100,states:[COMMENTED]){nodes{author{login} body submittedAt commit{oid}}}
+      lateGateReviews:reviews(last:100,states:[COMMENTED]){nodes{author{login} body submittedAt commit{oid}}}
       reviewThreads(first:100){pageInfo{hasNextPage endCursor} nodes{isResolved}}
       timelineItems(last:100,itemTypes:[REVIEW_REQUESTED_EVENT,LABELED_EVENT]){nodes{__typename
         ... on ReviewRequestedEvent{createdAt requestedReviewer{__typename ... on Bot{login}}}
@@ -72,6 +77,8 @@ type Context =
     }
   | { __typename: 'StatusContext'; context: string; state: string; description: string | null; createdAt: string };
 
+type GateReview = { author?: { login: string } | null; body: string; submittedAt: string | null; commit: { oid: string } | null };
+
 export interface RawPullRequest {
   id: string;
   number: number;
@@ -81,6 +88,15 @@ export interface RawPullRequest {
   labels: Page<{ name: string }>;
   reviewRequests: Page<{ requestedReviewer: Reviewer }>;
   reviews: Page<{ submittedAt: string | null; commit: { oid: string } | null; comments: { totalCount: number } }>;
+  /**
+   * The first and the last hundred `COMMENTED` reviews, where the relay's is looked for. Each answer to a
+   * thread is such a review: the relay's, posted once, is among the first on most pull requests, and
+   * among the last on one with a long discussion before it — missed only on a pull request with more than
+   * two hundred such reviews, where it sits past the first hundred and before the last. Absent from the
+   * fixtures recorded before it existed.
+   */
+  gateReviews?: Page<GateReview>;
+  lateGateReviews?: Page<GateReview>;
   reviewThreads: Threads;
   timelineItems: Page<{
     __typename: string;
@@ -159,18 +175,22 @@ function toCheck(c: Context, superseded: ReadonlySet<number>): Check {
   return { ...of, name: c.name, state, at };
 }
 
-const NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|refused|ignored|timeout)/;
+const NOTE_FIELDS = /head=([0-9a-f]{40}) reason=(quota|overage|refused|ignored|timeout)(?: lovable=(credits|token|unavailable))?/;
 
 function toNote(comment: { id: string; body: string }): Note | null {
   if (!comment.body.startsWith(NOTE_MARK)) return null;
   const m = NOTE_FIELDS.exec(comment.body);
-  return m?.[1] && m[2] ? { id: comment.id, head: m[1], reason: m[2] as Unreviewed } : null;
+  return m?.[1] && m[2] ? { id: comment.id, head: m[1], reason: m[2] as Unreviewed, lovable: (m[3] as LovableFailure | undefined) ?? null } : null;
 }
 
 const isCopilot = (r: Reviewer | undefined) => r?.__typename === 'Bot' && r.login === COPILOT_LOGIN;
 
-/** The pull request as the gate sees it. `unresolvedThreads` counts the first page; `readSnapshot` adds the rest. */
-export function parseSnapshot(pr: RawPullRequest): Snapshot {
+/**
+ * The pull request as the gate sees it. `unresolvedThreads` counts the first page; `readSnapshot` adds the rest.
+ * `viewer`: the gate token's owner, who posts the relay's reviews — on a public repository anyone can
+ * post a review that starts with their mark.
+ */
+export function parseSnapshot(pr: RawPullRequest, viewer = ''): Snapshot {
   const timeline = present(pr.timelineItems.nodes);
   const latest = (times: (string | undefined)[]) => times.filter((t): t is string => !!t).sort().at(-1) ?? null;
   const commit = present(pr.commits.nodes)[0]?.commit;
@@ -178,6 +198,9 @@ export function parseSnapshot(pr: RawPullRequest): Snapshot {
   const superseded = supersededRuns(contexts);
   const gate = contexts.find((c) => c.__typename === 'StatusContext' && c.context === CONTEXT);
   const notes = present(pr.comments.nodes).map(toNote).filter((n): n is Note => n !== null);
+  const lovable = present([...(pr.gateReviews?.nodes ?? []), ...(pr.lateGateReviews?.nodes ?? [])]).find(
+    (r) => !!viewer && r.author?.login === viewer && r.body.startsWith(LOVABLE_MARK) && r.commit && r.submittedAt,
+  );
   return {
     id: pr.id,
     number: pr.number,
@@ -194,19 +217,21 @@ export function parseSnapshot(pr: RawPullRequest): Snapshot {
       .filter((r) => r.submittedAt && r.commit)
       .map((r) => ({ commit: r.commit!.oid, submittedAt: r.submittedAt!, comments: r.comments.totalCount }))
       .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt)),
+    lovableReview: lovable ? { commit: lovable.commit!.oid, submittedAt: lovable.submittedAt! } : null,
     unresolvedThreads: present(pr.reviewThreads.nodes).filter((t) => !t.isResolved).length,
     checks: contexts.map((c) => toCheck(c, superseded)),
-    gateStatus: gate?.__typename === 'StatusContext' ? { state: gate.state.toLowerCase(), description: gate.description ?? '' } : null,
+    gateStatus:
+      gate?.__typename === 'StatusContext' ? { state: gate.state.toLowerCase(), description: gate.description ?? '', at: gate.createdAt } : null,
     note: notes.at(-1) ?? null,
   };
 }
 
 export async function readSnapshot(gh: Api, number: number): Promise<Snapshot | null> {
   const vars = { owner: gh.owner, name: gh.repo, number };
-  const data = await gh.graphql<{ repository: { pullRequest: RawPullRequest | null } }>(SNAPSHOT_QUERY, vars);
+  const data = await gh.graphql<{ viewer?: { login: string }; repository: { pullRequest: RawPullRequest | null } }>(SNAPSHOT_QUERY, vars);
   const pr = data.repository.pullRequest;
   if (!pr) return null;
-  const snapshot = parseSnapshot(pr);
+  const snapshot = parseSnapshot(pr, data.viewer?.login);
   let page = pr.reviewThreads.pageInfo;
   while (page.hasNextPage && page.endCursor) {
     const more = await gh.graphql<{ repository: { pullRequest: { reviewThreads: Threads } } }>(THREADS_QUERY, {
@@ -290,10 +315,11 @@ export function parseQuota(raw: RawQuota): Quota | null {
     permitted && typeof q.overage_entitlement === 'number' && typeof q.overage_count === 'number'
       ? q.overage_entitlement - q.overage_count
       : null;
-  const overage = permitted && (overageRemaining === null || overageRemaining > 0);
-  const exhausted = !q.unlimited && spent && !overage;
+  const room = permitted && (overageRemaining === null || overageRemaining > 0);
+  const exhausted = !q.unlimited && spent && !room;
   return {
     exhausted,
+    overage: !q.unlimited && spent && room,
     remaining,
     overageRemaining,
     resetAt: raw.quota_reset_date_utc ?? raw.quota_reset_date ?? null,

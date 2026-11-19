@@ -1,5 +1,5 @@
 name: merge-gate
-description: Keeps a finalized pull request in draft until its CI is green, Copilot has reviewed it and no review thread is open.
+description: Keeps a finalized pull request in draft until its CI is green, Copilot (or the Lovable relay in its place) has reviewed it and no review thread is open.
 inputs:
   token:
     description: A token of the repository owner (the GATE_TOKEN secret). GITHUB_TOKEN cannot draw a pull request back to draft.
@@ -15,6 +15,12 @@ inputs:
     default: ''
   ignore-checks:
     description: Checks the CI verdict leaves out, comma-separated.
+    default: ''
+  lovable-relay-url:
+    description: The Lovable relay's address (the LOVABLE_RELAY_URL secret). With the token, the relay reviews whatever head Copilot cannot, and Copilot's paid overage is left alone. Never on a repository whose code must not leave it.
+    default: ''
+  lovable-relay-token:
+    description: The relay's token for this caller (the LOVABLE_RELAY_TOKEN secret).
     default: ''
 runs:
   using: node24

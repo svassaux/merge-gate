@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { gatePullRequest, noteBody } from '../src/gate.ts';
 import { HttpError, isThrottled, type Api, type Response } from '../src/github.ts';
-import { REVIEW_EFFORTS, type Unreviewed } from '../src/model.ts';
+import { LOVABLE_MARK, REVIEW_EFFORTS, type Unreviewed } from '../src/model.ts';
+import { VERDICTS_SCHEMA } from '../src/prompts.ts';
+import { RelayError, type JsonAnswer, type JsonRequest, type Relay } from '../src/relay.ts';
 import { SNAPSHOT_QUERY, type RawPullRequest } from '../src/snapshot.ts';
 import { targets } from '../src/targets.ts';
 import { REASONS } from '../src/verdict.ts';
@@ -32,6 +34,22 @@ class FakeGitHub implements Api {
   quota: object | null = { quota_snapshots: { premium_interactions: { has_quota: true, remaining: 900 } } };
   failOn: string | null = null;
   variableExists = false;
+  /** The status descriptions the gate wrote, in order. */
+  readonly statuses: string[] = [];
+  /** What the pull request changes, as `GET /pulls/{n}/files` lists it: read by the Lovable review only. */
+  files = [{ filename: 'src/a.ts', status: 'added', patch: '@@ -0,0 +1,3 @@\n+const a = 1;\n+const b = a / 0;\n+export { b };' }];
+  /** The Lovable review the gate posted. */
+  review: { body: string; comments: unknown[] } | null = null;
+  /** The status GitHub answers the review's post with. */
+  reviewAnswer = 200;
+  /** Reads keep showing the pull request as it was before the review was posted. */
+  lagging = false;
+  /** A push lands right after the review is posted. */
+  moveAfterPost = false;
+  /** A GitHub outage on the reads whose `METHOD /path` starts with this: a 502, or no answer at all (0). */
+  outageOn: string | null = null;
+  outageStatus = 502;
+  before: RawPullRequest | null = null;
   readonly pr: RawPullRequest;
 
   constructor(pr: RawPullRequest) {
@@ -43,7 +61,11 @@ class FakeGitHub implements Api {
   }
 
   async graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
-    if (query === SNAPSHOT_QUERY) return { repository: { pullRequest: this.pr } } as T;
+    if (query === SNAPSHOT_QUERY) {
+      // A read that lags behind the review the gate posted still shows the pull request without it.
+      const pr = this.lagging ? this.before ?? this.pr : this.pr;
+      return { viewer: { login: 'svassaux' }, repository: { pullRequest: pr } } as T;
+    }
     if (query.includes('reviewRequests(first:30)') && query.includes('totalCount')) {
       // Accepted, or already pending: either way the queue shows it unless Copilot dropped it.
       const queued = this.calls.includes(ASK) && [201, 409].includes(this.requestAnswer.status) && this.queueAfterRequest;
@@ -60,6 +82,9 @@ class FakeGitHub implements Api {
     if (name === this.failOn) throw new Error(`${name} refused`);
     this.calls.push(name);
     if (name === 'addComment' || name === 'updateIssueComment') this.note = String(variables['body']);
+    // The writes a later read sees: a run that reads the pull request again after a Lovable review.
+    if (name === 'convertPullRequestToDraft') this.pr.isDraft = true;
+    if (name === 'markPullRequestReadyForReview') this.pr.isDraft = false;
     return {} as T;
   }
 
@@ -67,6 +92,25 @@ class FakeGitHub implements Api {
     const short = `${method} ${path.replace(this.repoPath(''), '')}`;
     if (short === 'GET /copilot_internal/user') return { status: this.quota ? 200 : 404, data: this.quota as T };
     if (short.startsWith(this.failOn ?? '\0')) throw new Error(`${short} refused`);
+    if (short.startsWith(this.outageOn ?? '\0')) throw new HttpError(this.outageStatus, `${short}: ${this.outageStatus}`);
+    if (short === 'GET /pulls/77') return { status: 200, data: { title: 'A change', body: '', head: { sha: this.pr.headRefOid } } as T };
+    if (short.startsWith('GET /pulls/77/files')) return { status: 200, data: (short.includes('page=1') ? this.files : []) as T };
+    if (short.startsWith('GET /contents/')) return { status: 404, data: null as T };
+    if (short === 'POST /pulls/77/reviews') {
+      this.calls.push(short);
+      if (this.reviewAnswer !== 200) return { status: this.reviewAnswer, data: null as T };
+      this.review = body as { body: string; comments: unknown[] };
+      this.before = structuredClone(this.pr);
+      this.pr.gateReviews = {
+        nodes: [
+          ...(this.pr.gateReviews?.nodes ?? []),
+          { author: { login: 'svassaux' }, body: this.review.body, submittedAt: NOW.toISOString(), commit: { oid: this.pr.headRefOid } },
+        ],
+      };
+      for (const _ of this.review.comments) this.pr.reviewThreads.nodes.push({ isResolved: false });
+      if (this.moveAfterPost) this.pr.headRefOid = 'e'.repeat(40);
+      return { status: 200, data: null as T };
+    }
     const effort = (body as { review_effort?: string } | undefined)?.review_effort;
     if (short.endsWith('/copilot-code-review')) {
       this.calls.push(`${short} ${effort}`);
@@ -79,6 +123,22 @@ class FakeGitHub implements Api {
       return this.requestAnswer as Response<T>;
     }
     const state = (body as { state?: string } | undefined)?.state;
+    const description = (body as { description?: string } | undefined)?.description;
+    if (path.includes('/statuses/') && description) {
+      this.statuses.push(description);
+      // The rollup holds a context's last status only.
+      const contexts = this.pr.commits.nodes[0]!.commit.statusCheckRollup!.contexts;
+      contexts.nodes = contexts.nodes.filter((c) => !(c?.__typename === 'StatusContext' && c.context === 'merge-gate'));
+      contexts.nodes.push({
+        __typename: 'StatusContext',
+        context: 'merge-gate',
+        state: String(state).toUpperCase(),
+        description,
+        createdAt: NOW.toISOString(),
+      });
+    }
+    if (short === 'POST /issues/77/labels') this.pr.labels.nodes.push({ name: 'merge-gate' });
+    if (short === 'DELETE /issues/77/labels/merge-gate') this.pr.labels.nodes = this.pr.labels.nodes.filter((l) => l?.name !== 'merge-gate');
     this.calls.push(state ? `${short} ${state}` : short);
     if (method === 'PATCH' && path.includes('/actions/variables/')) return { status: this.variableExists ? 204 : 404, data: null as T };
     return { status: 201, data: null as T };
@@ -312,6 +372,304 @@ describe('acting on a pull request', () => {
     gh.failOn = 'convertPullRequestToDraft';
     await assert.rejects(gate(gh), /convertPullRequestToDraft refused/);
     assert.equal(gh.calls.at(-1), 'POST /statuses/' + pr.headRefOid + ' failure');
+  });
+});
+
+/**
+ * A relay that finds `findings` on src/a.ts and whose verifier keeps them all, or that fails every
+ * call with `error`. Counts its calls.
+ */
+function fakeRelay(findings: { line: number; title: string }[], error: RelayError | null = null): Relay & { calls: number } {
+  return {
+    calls: 0,
+    async json<T>(req: JsonRequest): Promise<JsonAnswer<T>> {
+      this.calls++;
+      if (error) throw error;
+      const done = (value: unknown) => ({ value: value as T, usage: { prompt: 1, completion: 1, reasoning: 0 }, model: req.model, ms: 1 });
+      if (req.schema !== VERDICTS_SCHEMA) {
+        // One finder only, so that each finding is proposed once.
+        const mine = req.model === 'openai/gpt-6.1-terra' ? findings : [];
+        return done({ findings: mine.map((f) => ({ path: 'src/a.ts', severity: 'high', category: 'logic', explanation: 'Divides by zero.', fix: '', ...f })) });
+      }
+      const candidates = JSON.parse(req.user.slice(req.user.indexOf('[', req.user.indexOf('===== CANDIDATE FINDINGS')))) as { id: number }[];
+      return done({ verdicts: candidates.map((c) => ({ ...c, keep: true, reason: 'traced' })) });
+    },
+  };
+}
+
+/** The quota GitHub answered on 2026-11-19: the included entitlement spent, the paid overage running. */
+const OVERAGE = {
+  quota_snapshots: {
+    premium_interactions: { has_quota: true, remaining: -2092, overage_permitted: true, overage_count: 2091, overage_entitlement: 8000, unlimited: false },
+  },
+};
+const EXHAUSTED = { quota_snapshots: { premium_interactions: { has_quota: false, remaining: 0 } } };
+const withRelay = (gh: FakeGitHub, relay: Relay) =>
+  gatePullRequest(gh, 77, { ...cfg, lovable: true }, RUN, { now: NOW, registerWaitS: 0, relay, review: { clock: () => 0 } });
+
+describe('the Lovable relay in Copilot’s place', () => {
+  it('past Copilot’s included credits: holds the pull request, has the relay review it, and opens it on a clean review', async () => {
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = OVERAGE;
+    const relay = fakeRelay([]);
+    const line = await withRelay(gh, relay);
+    assert.ok(!gh.calls.includes(ASK), 'the paid overage is left alone');
+    assert.ok(relay.calls > 0);
+    const head = gh.pr.headRefOid;
+    assert.deepEqual(gh.calls, [
+      'POST /issues/77/labels',
+      'convertPullRequestToDraft',
+      `POST /statuses/${head} pending`,
+      'PATCH /actions/variables/MERGE_GATE_AWAIT_77',
+      'POST /actions/variables',
+      'POST /pulls/77/reviews',
+      'markPullRequestReadyForReview',
+      'DELETE /issues/77/labels/merge-gate',
+      `POST /statuses/${head} success`,
+      'DELETE /actions/variables/MERGE_GATE_AWAIT_77',
+    ]);
+    assert.match(gh.statuses[0] ?? '', /Lovable relit \(crédits Copilot inclus épuisés/);
+    assert.equal(gh.statuses[1], 'Prête — CI verte, relue par Lovable à la place de Copilot, aucun fil ouvert');
+    assert.ok(gh.review?.body.startsWith(`${LOVABLE_MARK} head=${head} -->`));
+    assert.match(line, /relue par Lovable : 0 fil\(s\)/);
+  });
+
+  it('without the relay’s secrets, still asks Copilot past its included credits', async () => {
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = OVERAGE;
+    await gatePullRequest(gh, 77, { ...cfg, lovable: true }, RUN, { now: NOW, registerWaitS: 0 });
+    assert.ok(gh.calls.includes(ASK));
+  });
+
+  it('keeps the pull request in draft when the review opened a thread: it is the author’s to answer', async () => {
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = EXHAUSTED;
+    await withRelay(gh, fakeRelay([{ line: 2, title: 'b divides by zero' }]));
+    assert.equal(gh.review?.comments.length, 1);
+    assert.ok(!gh.calls.includes('markPullRequestReadyForReview'));
+    assert.match(gh.statuses.at(-1) ?? '', /^Gardée en brouillon — 1 fil ouvert à traiter/);
+    assert.equal(gh.calls.at(-1), 'DELETE /actions/variables/MERGE_GATE_AWAIT_77', 'nothing left to wake up for');
+  });
+
+  it('opens with a note naming both failures when the relay has no credit left', async () => {
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = OVERAGE;
+    const line = await withRelay(gh, fakeRelay([], new RelayError('credits', 402, 'relais 402')));
+    assert.equal(gh.review, null);
+    assert.match(gh.note, /reason=overage lovable=credits -->/);
+    assert.match(gh.note, /Ni de relecture Lovable\*\* : crédits Lovable épuisés/);
+    assert.equal(gh.statuses.at(-1), 'Prête — NON relue par Copilot : crédits Copilot inclus épuisés, dépassement payant évité · ni par Lovable : crédits Lovable épuisés');
+    assert.match(line, /relecture Lovable impossible \(credits\)/);
+  });
+
+  it('starts no second review while another run’s is in flight, and starts one once that run is dead', async () => {
+    // The sweep shares no concurrency group with the pull request's runs: it reads the status the
+    // reviewing run wrote before starting, and when — Copilot still queued past its timeout included.
+    for (const [reason, minAgo, expected] of [
+      ['overage', 5, 0],
+      ['overage', 25, 1],
+      ['timeout', 5, 0],
+      ['timeout', 25, 1],
+    ] as const) {
+      const pr = unreviewed();
+      pr.isDraft = true;
+      pr.labels.nodes.push({ name: 'merge-gate' });
+      if (reason === 'timeout') {
+        const copilot = { __typename: 'Bot', login: 'copilot-pull-request-reviewer' };
+        pr.reviewRequests.nodes = [{ requestedReviewer: copilot }];
+        pr.timelineItems.nodes.push({ __typename: 'ReviewRequestedEvent', createdAt: new Date(NOW.getTime() - 60 * 60_000).toISOString(), requestedReviewer: copilot });
+      }
+      const relaying = `Gardée en brouillon — Lovable relit (${REASONS[reason]})`;
+      pr.commits.nodes[0]!.commit.statusCheckRollup!.contexts.nodes.push({
+        __typename: 'StatusContext',
+        context: 'merge-gate',
+        state: 'PENDING',
+        description: relaying,
+        createdAt: new Date(NOW.getTime() - minAgo * 60_000).toISOString(),
+      });
+      const gh = new FakeGitHub(pr);
+      gh.quota = OVERAGE;
+      await withRelay(gh, fakeRelay([]));
+      const label = `${reason}, ${minAgo} min`;
+      assert.equal(gh.calls.filter((c) => c === 'POST /pulls/77/reviews').length, expected, label);
+      assert.ok(!gh.calls.includes(ASK), label);
+      if (expected === 0) assert.deepEqual(gh.calls, ['PATCH /actions/variables/MERGE_GATE_AWAIT_77', 'POST /actions/variables'], `${label}: the sweep looks again later`);
+      // The dead run's status reads the same: written again all the same, as its time is the lock.
+      else assert.equal(gh.statuses[0], relaying, label);
+    }
+  });
+
+  it('leaves the in-flight review’s status alone when the CI turned red meanwhile: it is the lock', async () => {
+    const pr = unreviewed();
+    pr.isDraft = true;
+    pr.labels.nodes.push({ name: 'merge-gate' });
+    const nodes = pr.commits.nodes[0]!.commit.statusCheckRollup!.contexts.nodes;
+    for (const c of nodes) if (c?.__typename === 'CheckRun' && c.name === 'verify') c.conclusion = 'FAILURE';
+    nodes.push({
+      __typename: 'StatusContext',
+      context: 'merge-gate',
+      state: 'PENDING',
+      description: `Gardée en brouillon — Lovable relit (${REASONS.overage})`,
+      createdAt: new Date(NOW.getTime() - 5 * 60_000).toISOString(),
+    });
+    const gh = new FakeGitHub(pr);
+    gh.quota = OVERAGE;
+    await withRelay(gh, fakeRelay([]));
+    assert.deepEqual(gh.statuses, []);
+    assert.ok(!gh.calls.includes('POST /pulls/77/reviews'));
+  });
+
+  it('leaves the in-flight review’s status alone even when the watching run fails: it is the lock', async () => {
+    const pr = unreviewed();
+    pr.isDraft = true;
+    pr.labels.nodes.push({ name: 'merge-gate' });
+    pr.commits.nodes[0]!.commit.statusCheckRollup!.contexts.nodes.push({
+      __typename: 'StatusContext',
+      context: 'merge-gate',
+      state: 'PENDING',
+      description: `Gardée en brouillon — Lovable relit (${REASONS.overage})`,
+      createdAt: new Date(NOW.getTime() - 5 * 60_000).toISOString(),
+    });
+    const gh = new FakeGitHub(pr);
+    gh.quota = OVERAGE;
+    // The wake-up's write is the one thing a watching run does.
+    gh.failOn = 'PATCH /actions/variables';
+    await assert.rejects(withRelay(gh, fakeRelay([])), /refused/);
+    assert.deepEqual(gh.statuses, [], 'no failure written over the lock');
+  });
+
+  it('posts nothing and decides nothing when the head moves during the review, or right after it', async () => {
+    const during = new FakeGitHub(unreviewed());
+    during.quota = OVERAGE;
+    const relay = fakeRelay([]);
+    const json = relay.json.bind(relay);
+    relay.json = async <T,>(req: JsonRequest) => {
+      during.pr.headRefOid = 'd'.repeat(40);
+      return json<T>(req);
+    };
+    const line = await withRelay(during, relay);
+    assert.match(line, /la tête a bougé pendant la relecture, rien n’est posté/);
+    assert.ok(!during.calls.includes('POST /pulls/77/reviews'));
+    assert.equal(during.statuses.length, 1, 'the interim status only: the new head’s run decides');
+
+    const after = new FakeGitHub(unreviewed());
+    after.quota = OVERAGE;
+    after.moveAfterPost = true;
+    assert.match(await withRelay(after, fakeRelay([])), /la tête a bougé depuis : son run décidera/);
+    assert.ok(after.review);
+    assert.equal(after.statuses.length, 1);
+  });
+
+  it('fails the run when GitHub is out or out of reach during the review, without a note: a later run reviews again', async () => {
+    for (const status of [502, 0]) {
+      const gh = new FakeGitHub(unreviewed());
+      gh.quota = OVERAGE;
+      gh.outageOn = 'GET /pulls/77/files';
+      gh.outageStatus = status;
+      await assert.rejects(withRelay(gh, fakeRelay([])), (e: HttpError) => e.status === status);
+      assert.equal(gh.note, '', String(status));
+      assert.equal(gh.statuses.length, 1);
+      assert.ok(!gh.calls.includes('DELETE /actions/variables/MERGE_GATE_AWAIT_77'), 'the wake-up stays');
+    }
+  });
+
+  it('when the relay fails after Copilot reviewed meanwhile: Copilot’s review stands, and no note says there was none', async () => {
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = OVERAGE;
+    const relay: Relay = {
+      async json() {
+        if (gh.pr.reviews.nodes.length === 0) gh.pr.reviews.nodes.push({ submittedAt: NOW.toISOString(), commit: { oid: gh.pr.headRefOid }, comments: { totalCount: 0 } });
+        throw new RelayError('credits', 402, 'relais 402');
+      },
+    };
+    await withRelay(gh, relay);
+    assert.equal(gh.note, '');
+    assert.equal(gh.statuses.at(-1), 'Prête — CI verte, relue par Copilot, aucun fil ouvert');
+  });
+
+  it('has the relay review one pull request a run: the next waits, held and awaited, for a later run', async () => {
+    const relayTurn = { taken: false };
+    const run = (gh: FakeGitHub, relay: Relay) =>
+      gatePullRequest(gh, 77, { ...cfg, lovable: true }, RUN, { now: NOW, registerWaitS: 0, relay, review: { clock: () => 0 }, relayTurn });
+    const first = new FakeGitHub(unreviewed());
+    first.quota = OVERAGE;
+    await run(first, fakeRelay([]));
+    assert.ok(first.review);
+    const second = new FakeGitHub(unreviewed());
+    second.quota = OVERAGE;
+    const relay = fakeRelay([]);
+    await run(second, relay);
+    assert.equal(relay.calls, 0);
+    assert.equal(second.review, null);
+    assert.match(second.statuses.at(-1) ?? '', /^Gardée en brouillon — relecture Lovable à venir \(crédits Copilot inclus épuisés/);
+    assert.ok(second.calls.includes('POST /actions/variables') && !second.calls.includes('DELETE /actions/variables/MERGE_GATE_AWAIT_77'));
+  });
+
+  it('decides all the same when GitHub refuses the review: a note, no wake-up that would start it again', async () => {
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = OVERAGE;
+    gh.reviewAnswer = 422;
+    const line = await withRelay(gh, fakeRelay([]));
+    assert.ok(gh.calls.includes('POST /pulls/77/reviews'));
+    assert.match(gh.note, /reason=overage lovable=unavailable -->/);
+    assert.match(gh.statuses.at(-1) ?? '', /^Prête — NON relue par Copilot : .* · ni par Lovable/);
+    assert.equal(gh.calls.at(-1), 'DELETE /actions/variables/MERGE_GATE_AWAIT_77');
+    assert.match(line, /relecture Lovable en échec : POST \/pulls\/77\/reviews: 422/);
+  });
+
+  it('counts the review it posted even when GitHub’s next read does not show it yet', async () => {
+    for (const [findings, expected] of [
+      [[], /^Prête — CI verte, relue par Lovable/],
+      [[{ line: 2, title: 'b divides by zero' }], /^Gardée en brouillon — 1 fil ouvert à traiter/],
+    ] as const) {
+      const gh = new FakeGitHub(unreviewed());
+      gh.quota = OVERAGE;
+      gh.lagging = true;
+      await withRelay(gh, fakeRelay([...findings]));
+      assert.ok(gh.review);
+      assert.match(gh.statuses.at(-1) ?? '', expected);
+    }
+  });
+
+  it('decides on the pull request as it is after the review: a CI that turned red meanwhile keeps it held', async () => {
+    const gh = new FakeGitHub(unreviewed());
+    gh.quota = OVERAGE;
+    const relay = fakeRelay([]);
+    const json = relay.json.bind(relay);
+    relay.json = async <T,>(req: JsonRequest) => {
+      const nodes = gh.pr.commits.nodes[0]!.commit.statusCheckRollup!.contexts.nodes;
+      for (const c of nodes) if (c?.__typename === 'CheckRun' && c.name === 'verify') c.conclusion = 'FAILURE';
+      return json<T>(req);
+    };
+    await withRelay(gh, relay);
+    assert.ok(gh.review);
+    assert.ok(!gh.calls.includes('markPullRequestReadyForReview'));
+    assert.match(gh.statuses.at(-1) ?? '', /^Gardée en brouillon — CI rouge : verify/);
+  });
+
+  it('reads that note back: a run after it neither calls the relay again nor asks Copilot', async () => {
+    const pr = unreviewed();
+    pr.comments.nodes.push({ id: 'IC_note', body: noteBody(pr.headRefOid, 'overage', null, 'credits') });
+    const gh = new FakeGitHub(pr);
+    gh.quota = OVERAGE;
+    const relay = fakeRelay([]);
+    await withRelay(gh, relay);
+    assert.equal(relay.calls, 0);
+    assert.ok(!gh.calls.includes(ASK) && !gh.calls.includes('addComment') && !gh.calls.includes('updateIssueComment'));
+  });
+
+  it('takes the relay’s review as the pull request’s one review, on any later head', async () => {
+    const pr = unreviewed();
+    pr.gateReviews = {
+      nodes: [{ author: { login: 'svassaux' }, body: `${LOVABLE_MARK} head=${'b'.repeat(40)} -->\n### Relecture Lovable`, submittedAt: '2026-10-02T11:00:00Z', commit: { oid: 'b'.repeat(40) } }],
+    };
+    const gh = new FakeGitHub(pr);
+    gh.quota = OVERAGE;
+    const relay = fakeRelay([]);
+    await withRelay(gh, relay);
+    assert.equal(relay.calls, 0);
+    assert.ok(!gh.calls.includes(ASK));
+    assert.equal(gh.statuses.at(-1), 'Prête — CI verte, relue par Lovable à la place de Copilot, aucun fil ouvert');
   });
 });
 

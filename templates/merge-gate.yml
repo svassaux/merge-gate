@@ -1,6 +1,7 @@
 # The merge gate: a finalized pull request stays in draft until its CI is green, Copilot has reviewed
-# it and no review thread is open — and Copilot out of credits never blocks it. Contract, inputs and
-# costs: https://github.com/svassaux/merge-gate
+# it and no review thread is open — and Copilot out of credits never blocks it: the Lovable relay
+# reviews in its place where its two secrets are set. Contract, inputs and costs:
+# https://github.com/svassaux/merge-gate
 # Copy this file as .github/workflows/merge-gate.yml and adapt the marked line (# ADAPT) only. The job
 # itself lives once in svassaux/merge-gate (.github/workflows/gate.yml); GitHub requires the triggers
 # to stay here.
@@ -32,6 +33,10 @@ jobs:
     uses: svassaux/merge-gate/.github/workflows/gate.yml@v1
     secrets:
       GATE_TOKEN: ${{ secrets.GATE_TOKEN }}
+      # The Lovable relay reviews whatever head Copilot cannot. Empty where the repository does not set
+      # them — and never set them on a repository that holds customers' data.
+      LOVABLE_RELAY_URL: ${{ secrets.LOVABLE_RELAY_URL }}
+      LOVABLE_RELAY_TOKEN: ${{ secrets.LOVABLE_RELAY_TOKEN }}
     # Only when the CI's aggregate job is not named `verify`:
     # with:
     #   required-checks: <its name>
