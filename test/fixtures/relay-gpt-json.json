@@ -1,0 +1,36 @@
+{
+ "id": "chatcmpl-Em4AmfvsgPKIWSPg2BEmGR2kDB4Yo",
+ "object": "chat.completion",
+ "created": 1795124492,
+ "model": "gpt-6.1-terra",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": "{\"findings\":[{\"path\":\"src/sum.ts\",\"line\":3,\"severity\":\"high\",\"category\":\"Correctness\",\"title\":\"sum subtracts its arguments instead of adding them\",\"explanation\":\"For example, sum(5, 3) returns 2 instead of 8. Every caller expecting addition receives an incorrect result when b is nonzero.\",\"fix\":\"Return a + b.\"}]}",
+    "refusal": null,
+    "annotations": []
+   },
+   "finish_reason": "stop"
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 299,
+  "completion_tokens": 105,
+  "total_tokens": 404,
+  "prompt_tokens_details": {
+   "cached_tokens": 0,
+   "cache_write_tokens": 0,
+   "audio_tokens": 0
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 12,
+   "audio_tokens": 0,
+   "accepted_prediction_tokens": 0,
+   "rejected_prediction_tokens": 0
+  }
+ },
+ "service_tier": "default",
+ "system_fingerprint": null
+}

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { AWAIT_PREFIX } from '../src/model.ts';
+import { LOVABLE_RUN_MIN } from '../src/verdict.ts';
 
 /** The job lives once, in the shared workflow; the callers keep only what GitHub requires of them. */
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -9,6 +10,11 @@ const template = read('templates/merge-gate.yml');
 const selfCaller = read('.github/workflows/merge-gate.yml');
 const shared = read('.github/workflows/gate.yml');
 const action = read('action.yml');
+
+/** The relay's secrets, which a caller hands over beside GATE_TOKEN. */
+const RELAY_SECRETS = ['LOVABLE_RELAY_URL', 'LOVABLE_RELAY_TOKEN'];
+/** The action's inputs fed by a secret rather than by a workflow input. */
+const FROM_SECRETS: Record<string, string> = { token: 'GATE_TOKEN', 'lovable-relay-url': 'LOVABLE_RELAY_URL', 'lovable-relay-token': 'LOVABLE_RELAY_TOKEN' };
 
 /** The `on:` block of a caller, without its comments: what a repository copies and must not let drift. */
 const triggers = (workflow: string) => {
@@ -32,9 +38,10 @@ describe('the callers', () => {
     assert.deepEqual(triggers(selfCaller), t.map((line) => line.replace(/^  pull_request_target:$/, '  pull_request:')));
   });
 
-  it('the template calls the released shared job and hands it the secret', () => {
+  it('the template calls the released shared job and hands it the secrets', () => {
     assert.match(template, /^ {4}uses: svassaux\/merge-gate\/\.github\/workflows\/gate\.yml@v1$/m);
     assert.match(template, /^ {4}secrets:\n {6}GATE_TOKEN: \$\{\{ secrets\.GATE_TOKEN \}\}$/m);
+    for (const name of RELAY_SECRETS) assert.match(template, new RegExp(`^ {6}${name}: \\$\\{\\{ secrets\\.${name} \\}\\}$`, 'm'));
     assert.match(template, /^ {2}pull_request_target:$/m, 'the gate runs on the default branch, not as a check of the PR');
     assert.doesNotMatch(template, /^ {4}(if|concurrency|runs-on|steps):/m, 'nothing generic is copied into a repository');
   });
@@ -44,8 +51,8 @@ describe('the callers', () => {
     assert.match(selfCaller, /^ {6}local: true$/m);
   });
 
-  it('hand over the gate token only, never every secret of the repository', () => {
-    assert.match(selfCaller, /^ {6}GATE_TOKEN: \$\{\{ secrets\.GATE_TOKEN \}\}$/m);
+  it('hand over the gate token and the relay’s secrets only, never every secret of the repository', () => {
+    for (const name of ['GATE_TOKEN', ...RELAY_SECRETS]) assert.match(selfCaller, new RegExp(`^ {6}${name}: \\$\\{\\{ secrets\\.${name} \\}\\}$`, 'm'));
     for (const caller of [template, selfCaller]) assert.doesNotMatch(caller, /^\s*secrets:\s*inherit\s*$/m);
   });
 });
@@ -56,8 +63,15 @@ describe('the shared job', () => {
     assert.ok(shared.includes("github.event_name == 'pull_request'"));
   });
 
-  it('declares the one secret its callers hand over', () => {
+  it('declares the secrets its callers hand over: the gate token required, the relay’s optional', () => {
     assert.match(shared, /^ {4}secrets:\n {6}GATE_TOKEN:\n(?: {8}.*\n)*? {8}required: true$/m);
+    for (const name of RELAY_SECRETS) assert.match(shared, new RegExp(`^ {6}${name}:\\n(?: {8}.*\\n)*? {8}required: false$`, 'm'));
+  });
+
+  it('dies when the gate stops taking its "Lovable relit" status for a review in flight', () => {
+    // Shorter, and a review still running would be taken for dead and started again; longer, and a dead
+    // one would hold the pull request for nothing.
+    assert.equal(Number(/^ {4}timeout-minutes: (\d+)$/m.exec(shared)?.[1]), LOVABLE_RUN_MIN);
   });
 
   it('runs the sweep only while a pull request awaits', () => {
@@ -66,14 +80,14 @@ describe('the shared job', () => {
 
   it('hands the release and the checkout the same inputs', () => {
     const release = withBlock('svassaux/merge-gate@v1');
-    assert.ok(release.includes('token: ${{ secrets.GATE_TOKEN }}'));
+    for (const [input, secret] of Object.entries(FROM_SECRETS)) assert.ok(release.includes(`${input}: \${{ secrets.${secret} }}`), input);
     assert.equal(withBlock('./'), release);
   });
 
   it('exposes every input of the action', () => {
     const actionInputs = [...action.slice(action.indexOf('inputs:'), action.indexOf('\nruns:')).matchAll(/^ {2}([a-z-]+):$/gm)]
-      .map((m) => m[1])
-      .filter((name) => name !== 'token');
+      .map((m) => m[1] ?? '')
+      .filter((name) => !(name in FROM_SECRETS));
     assert.ok(actionInputs.length >= 3, 'the action inputs were found');
     for (const name of actionInputs) {
       assert.match(shared, new RegExp(`^ {6}${name}:$`, 'm'), `workflow_call input ${name}`);

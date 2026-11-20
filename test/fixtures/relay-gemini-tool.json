@@ -1,0 +1,47 @@
+{
+ "id": "chatcmpl-D23_atfqObaW7bQPhM6QuA8",
+ "object": "chat.completion",
+ "created": 1795124495,
+ "model": "google/gemini-4-argon",
+ "choices": [
+  {
+   "index": 0,
+   "message": {
+    "role": "assistant",
+    "content": null,
+    "reasoning_details": [
+     {
+      "type": "reasoning.encrypted",
+      "data": "AY89a198xpgMeG4WVSVBtlBZYL0nnvbyw4V8GhHOhTzsglZNZEHUxt98F9TtSmLzNL4OQgHSTZNOjFmXw3xwCgk816JBBxgobksfY8WwXjmgP5iuLLymOqEARUW5oLxQmZ4h+pXJAQ2+UgagbpK1dPnE64OAmoYdYWK6Hv5S/ytFs7jNgAmF+g==",
+      "format": "google-gemini-v1",
+      "id": "call_10348036955045440484",
+      "index": 0
+     }
+    ],
+    "tool_calls": [
+     {
+      "id": "call_10348036955045440484",
+      "type": "function",
+      "function": {
+       "name": "answer",
+       "arguments": "{\"findings\":[{\"severity\":\"high\",\"path\":\"src/sum.ts\",\"fix\":\"return a + b;\",\"explanation\":\"The `sum` function uses the subtraction operator (`-`) instead of the addition operator (`+`). For any non-zero `b`, `sum(a, b)` will return the difference `a - b` rather than the sum `a + b`.\",\"line\":3,\"title\":\"`sum` subtracts `b` from `a` instead of adding them\",\"category\":\"Logic error\"}]}"
+      }
+     }
+    ]
+   },
+   "finish_reason": "tool_calls",
+   "native_finish_reason": "STOP"
+  }
+ ],
+ "usage": {
+  "prompt_tokens": 411,
+  "completion_tokens": 133,
+  "total_tokens": 544,
+  "prompt_tokens_details": {
+   "cached_tokens": 0
+  },
+  "completion_tokens_details": {
+   "reasoning_tokens": 0
+  }
+ }
+}

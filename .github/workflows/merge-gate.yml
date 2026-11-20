@@ -28,3 +28,5 @@ jobs:
       local: true
     secrets:
       GATE_TOKEN: ${{ secrets.GATE_TOKEN }}
+      LOVABLE_RELAY_URL: ${{ secrets.LOVABLE_RELAY_URL }}
+      LOVABLE_RELAY_TOKEN: ${{ secrets.LOVABLE_RELAY_TOKEN }}

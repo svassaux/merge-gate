@@ -22,6 +22,11 @@ export class HttpError extends Error {
     this.status = status;
     this.throttled = throttled;
   }
+
+  /** An outage, no answer at all (status 0), or a rate limit: it passes, and a later run asks again. */
+  get transient(): boolean {
+    return this.status === 0 || this.status >= 500 || this.throttled;
+  }
 }
 
 /**
@@ -50,12 +55,15 @@ export class GitHub implements Api {
   readonly repo: string;
   readonly #token: string;
   readonly #api: string;
+  /** The wait before a second try; the third waits twice as long. */
+  readonly #retryWaitMs: number;
 
-  constructor(token: string, owner: string, repo: string, api = 'https://api.github.com') {
+  constructor(token: string, owner: string, repo: string, api = 'https://api.github.com', retryWaitMs = 2_000) {
     this.#token = token;
     this.owner = owner;
     this.repo = repo;
     this.#api = api.replace(/\/$/, '');
+    this.#retryWaitMs = retryWaitMs;
   }
 
   /** `/repos/{owner}/{repo}` followed by `path`. */
@@ -78,6 +86,7 @@ export class GitHub implements Api {
   async #send<T>(method: string, path: string, body?: unknown): Promise<Response<T>> {
     for (let attempt = 1; ; attempt++) {
       let res: globalThis.Response;
+      let text: string;
       try {
         res = await fetch(`${this.#api}${path}`, {
           method,
@@ -91,18 +100,19 @@ export class GitHub implements Api {
           body: body === undefined ? undefined : JSON.stringify(body),
           signal: AbortSignal.timeout(TIMEOUT_MS),
         });
+        // Read under the same guard: a connection cut halfway through the body is a network failure too.
+        text = await res.text();
       } catch (err) {
         if (attempt < ATTEMPTS) {
-          await sleep(attempt * 2_000);
+          await sleep(attempt * this.#retryWaitMs);
           continue;
         }
-        throw new Error(`${method} ${path}: ${err instanceof Error ? err.message : String(err)}`);
+        throw new HttpError(0, `${method} ${path}: ${err instanceof Error ? err.message : String(err)}`);
       }
       if (res.status >= 500 && attempt < ATTEMPTS) {
-        await sleep(attempt * 2_000);
+        await sleep(attempt * this.#retryWaitMs);
         continue;
       }
-      const text = await res.text();
       let data: unknown = null;
       try {
         data = text ? JSON.parse(text) : null;

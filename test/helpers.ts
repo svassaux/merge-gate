@@ -7,7 +7,7 @@ export const NOW = new Date('2026-10-02T12:00:00Z');
 /** The ISO time `min` minutes before NOW. */
 export const ago = (min: number) => new Date(NOW.getTime() - min * 60_000).toISOString();
 
-export const cfg: Config = { firstReview: 'gate', copilotEffort: 'lite', requiredChecks: ['verify'], ignoreChecks: [], ownWorkflow: 'merge-gate' };
+export const cfg: Config = { firstReview: 'gate', copilotEffort: 'lite', requiredChecks: ['verify'], ignoreChecks: [], ownWorkflow: 'merge-gate', lovable: false };
 
 export const check = (name: string, state: Check['state'], over: Partial<Check> = {}): Check => ({
   workflow: 'CI',
@@ -32,6 +32,7 @@ export function snap(over: Partial<Snapshot> = {}): Snapshot {
     copilotQueued: false,
     copilotRequestedAt: null,
     copilotReviews: [],
+    lovableReview: null,
     unresolvedThreads: 0,
     checks: GREEN,
     gateStatus: null,
